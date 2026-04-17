@@ -75,7 +75,6 @@ bool Esp32Camera::Capture() {
         encoder_thread_.join();
     }
 
-    auto start_time = esp_timer_get_time();
     int frames_to_get = 1;
     // Try to get a stable frame
     for (int i = 0; i < frames_to_get; i++) {
@@ -88,9 +87,6 @@ bool Esp32Camera::Capture() {
             return false;
         }
     }
-    auto end_time = esp_timer_get_time();
-    ESP_LOGI(TAG, "Camera captured %d frames in %d ms", frames_to_get, int((end_time - start_time) / 1000));
-
     // 显示预览图片
     auto display = dynamic_cast<LvglDisplay*>(Board::GetInstance().GetDisplay());
     if (display != nullptr) {
@@ -126,7 +122,6 @@ std::unique_ptr<Esp32Camera::CaptureLock> Esp32Camera::CaptureForExplain() {
         encoder_thread_.join();
     }
 
-    auto start_time = esp_timer_get_time();
     int frames_to_get = 2;
     // Try to get a stable frame
     for (int i = 0; i < frames_to_get; i++) {
@@ -140,9 +135,6 @@ std::unique_ptr<Esp32Camera::CaptureLock> Esp32Camera::CaptureForExplain() {
             return nullptr;
         }
     }
-    auto end_time = esp_timer_get_time();
-    ESP_LOGI(TAG, "Camera captured %d frames in %d ms", frames_to_get, int((end_time - start_time) / 1000));
-
     // 显示预览图片
     auto display = dynamic_cast<LvglDisplay*>(Board::GetInstance().GetDisplay());
     if (display != nullptr) {

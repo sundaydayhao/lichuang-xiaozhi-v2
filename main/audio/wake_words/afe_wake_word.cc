@@ -19,18 +19,22 @@ AfeWakeWord::AfeWakeWord()
 AfeWakeWord::~AfeWakeWord() {
     if (afe_data_ != nullptr) {
         afe_iface_->destroy(afe_data_);
+        afe_data_ = nullptr;
     }
 
     if (wake_word_encode_task_stack_ != nullptr) {
         heap_caps_free(wake_word_encode_task_stack_);
+        wake_word_encode_task_stack_ = nullptr;
     }
 
     if (wake_word_encode_task_buffer_ != nullptr) {
         heap_caps_free(wake_word_encode_task_buffer_);
+        wake_word_encode_task_buffer_ = nullptr;
     }
 
-    if (models_ != nullptr) {
+    if (owns_models_ && models_ != nullptr) {
         esp_srmodel_deinit(models_);
+        models_ = nullptr;
     }
 
     vEventGroupDelete(event_group_);
@@ -38,23 +42,32 @@ AfeWakeWord::~AfeWakeWord() {
 
 bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
     codec_ = codec;
+    wake_words_.clear();
+    wakenet_model_ = nullptr;
     int ref_num = codec_->input_reference() ? 1 : 0;
 
     if (models_list == nullptr) {
         models_ = esp_srmodel_init("model");
+        owns_models_ = true;
     } else {
         models_ = models_list;
+        owns_models_ = false;
     }
 
-    if (models_ == nullptr || models_->num == -1) {
+    if (models_ == nullptr || models_->num <= 0) {
         ESP_LOGE(TAG, "Failed to initialize wakenet model");
         return false;
     }
+
     for (int i = 0; i < models_->num; i++) {
         ESP_LOGI(TAG, "Model %d: %s", i, models_->model_name[i]);
         if (strstr(models_->model_name[i], ESP_WN_PREFIX) != NULL) {
             wakenet_model_ = models_->model_name[i];
             auto words = esp_srmodel_get_wake_words(models_, wakenet_model_);
+            if (words == nullptr) {
+                ESP_LOGE(TAG, "Failed to get wake words from model: %s", wakenet_model_);
+                return false;
+            }
             // split by ";" to get all wake words
             std::stringstream ss(words);
             std::string word;
@@ -62,6 +75,15 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
                 wake_words_.push_back(word);
             }
         }
+    }
+
+    if (wakenet_model_ == nullptr) {
+        ESP_LOGE(TAG, "No WakeNet model found in models list");
+        return false;
+    }
+    if (wake_words_.empty()) {
+        ESP_LOGE(TAG, "WakeNet model %s has no wake words", wakenet_model_);
+        return false;
     }
 
     std::string input_format;
@@ -72,20 +94,47 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
         input_format.push_back('R');
     }
     afe_config_t* afe_config = afe_config_init(input_format.c_str(), models_, AFE_TYPE_SR, AFE_MODE_LOW_COST);
+    if (afe_config == nullptr) {
+        ESP_LOGE(TAG, "afe_config_init failed");
+        return false;
+    }
     afe_config->aec_init = codec_->input_reference();
     afe_config->aec_mode = AEC_MODE_SR_HIGH_PERF;
     afe_config->afe_perferred_core = 1;
     afe_config->afe_perferred_priority = 1;
     afe_config->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
-    
-    afe_iface_ = esp_afe_handle_from_config(afe_config);
-    afe_data_ = afe_iface_->create_from_config(afe_config);
 
-    xTaskCreate([](void* arg) {
+    afe_config = afe_config_check(afe_config);
+    if (afe_config == nullptr) {
+        ESP_LOGE(TAG, "afe_config_check failed");
+        return false;
+    }
+
+    afe_config_print(afe_config);
+    afe_iface_ = esp_afe_handle_from_config(afe_config);
+    if (afe_iface_ == nullptr) {
+        ESP_LOGE(TAG, "esp_afe_handle_from_config failed");
+        return false;
+    }
+
+    afe_data_ = afe_iface_->create_from_config(afe_config);
+    if (afe_data_ == nullptr) {
+        ESP_LOGE(TAG, "AFE create_from_config failed for model: %s", wakenet_model_);
+        return false;
+    }
+    afe_iface_->print_pipeline(afe_data_);
+
+    BaseType_t task_created = xTaskCreate([](void* arg) {
         auto this_ = (AfeWakeWord*)arg;
         this_->AudioDetectionTask();
         vTaskDelete(NULL);
-    }, "audio_detection", 4096, this, 3, nullptr);
+    }, "audio_detection", 6144, this, 3, nullptr);
+    if (task_created != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create audio_detection task");
+        afe_iface_->destroy(afe_data_);
+        afe_data_ = nullptr;
+        return false;
+    }
 
     return true;
 }
@@ -140,6 +189,11 @@ size_t AfeWakeWord::GetFeedSize() {
 }
 
 void AfeWakeWord::AudioDetectionTask() {
+    if (afe_iface_ == nullptr || afe_data_ == nullptr) {
+        ESP_LOGE(TAG, "AFE is not initialized, audio detection task exits");
+        return;
+    }
+
     auto fetch_size = afe_iface_->get_fetch_chunksize(afe_data_);
     auto feed_size = afe_iface_->get_feed_chunksize(afe_data_);
     ESP_LOGI(TAG, "Audio detection task started, feed size: %d fetch size: %d",
@@ -158,7 +212,13 @@ void AfeWakeWord::AudioDetectionTask() {
 
         if (res->wakeup_state == WAKENET_DETECTED) {
             Stop();
-            last_detected_wake_word_ = wake_words_[res->wakenet_model_index - 1];
+            int word_index = res->wakenet_model_index - 1;
+            if (word_index < 0 || word_index >= wake_words_.size()) {
+                ESP_LOGE(TAG, "Invalid wake word index: %d, wake words: %u",
+                    res->wakenet_model_index, static_cast<unsigned>(wake_words_.size()));
+                continue;
+            }
+            last_detected_wake_word_ = wake_words_[word_index];
 
             if (wake_word_detected_callback_) {
                 wake_word_detected_callback_(last_detected_wake_word_);
