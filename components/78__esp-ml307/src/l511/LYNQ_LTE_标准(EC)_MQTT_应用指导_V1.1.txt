@@ -1,0 +1,787 @@
+﻿LTE_标准(EC)_MQTT_应用指导
+
+LTE Module Series
+Version：  V1.1
+Date：     2025-01-23
+
+
+               LYNQ
+                    CONFIDENTIAL
+
+
+                                     Shanghai Mobiletek Communication Ltd.
+                                     前言
+
+    本产品及其附件的某些功能依赖于所安装的软件、本地网络的能力和设置，某些功能由于本地网络运营商或网
+络服务商的关系可能没有激活或受限运行。因此，本文的描述可能没有与你购买的产品或其配件完全匹配。本公司
+不承担由于用户的操作不当造成的财产损失或人身伤害责任。在未声明前，本公司有权根据技术发展的需要对本手
+册内容进行修改或变更。
+
+
+                                   版权声明
+
+    本手册版权属于上海移柯通信技术股份有限公司，任何人未经我司书面允许对本手册进行内容复制、引用或修
+改都将承担法律责任。
+
+
+                LYNQ
+                          CONFIDENTIAL
+Table     of  Contents
+
+
+Table of Contents...........................................................................................................................................................................3
+
+1 引言   ...........................................................................................................................................................................................4
+  1.1 MQTT 协议简介     ........................................................................................................................................................................ 4
+  1.2 文档目的................................................................................................................................................................................... 4
+  1.3 MQTT 使用流程......................................................................................................................................................................... 4
+
+2 AT 命令语句    .............................................................................................................................................................................. 1
+  2.1 定义  ........................................................................................................................................................................................... 1
+  2.2 AT 命令语句    .............................................................................................................................................................................. 1
+
+3 MQTT AT 指令详细说明       ............................................................................................................................................................2
+  3.1 AT+MCONFIG   MQTT  参数配置    ............................................................................................................................................... 2
+  3.2 AT+MQTTMIX   设置配置其他参数         Packet Id.......................................................................................................................... 3
+  3.3 AT+MQTTSSL  配置   MQTT  的 SSL 模式  ....................................................................................................................................4
+  3.4 AT+MIPSTART 配置服务器地址，端口和协议版本................................................................................................................4
+  3.5 AT+MCONNECT  请求连接     MQTT  服务器................................................................................................................................. 5
+  3.6 AT+MPUB  发布消息    ..................................................................................................................................................................6
+  3.7 AT+MPUBEX  发布较长的消息..................................................................................................................................................7
+  3.8 AT+MSUB   订阅主题    ................................................................................................................................................................ 9
+  3.9 AT+MUNSUB   取消主题订阅       ................................................................................................................................................. 10
+  3.10 AT+MDISCONNECT  断开   MQTT  连接  ....................................................................................................................................11
+  3.11 AT+MIPCLOSE    关闭   MQTT  客户端会话.      .......................................................................................................................11
+  3.12 AT+MQTTSTATU   查询   MQTT 的连接状态      .......................................................................................................................... 12
+
+4  MQTT  常见问题处理       .............................................................................................................................................................13
+  4.1 AT 命令 执 行失 败 ..... ...... ...... ......LYNQ.............................................................................................................................................. 13
+  4.2 连接失败................................................................................................................................................................................. 13
+  4.3 订阅/发布/退订失败        ..............................................................................................................................................................13
+
+5 MQTT 功能用法示例       ................................................................................................................................................................14
+  5.1 普通非    SSL 的 MQTT 操作用法示例......................................................................................................................................14
+  5.2 SSL 的 MQTT 操作用法示例CONFIDENTIAL....................................................................................................................................................15
+1     引言
+
+1.1  MQTT     协议简介
+
+    MQTT（Message    Queuing Telemetry Transport，消息队列遥测传输）是         IBM  开发的一个即时通讯协议，
+    有可能成为物联网的重要组成部分。该协议支持所有平台，几乎可以把所有联网物品和外部连接起来，被用来
+当做传感器的通信协议。
+    MQTT   协议是为大量计算能力有限，且工作在低带宽、不可靠的网络的远程传感器和控制设备通讯而设计的协
+议，它具有以下主要的几项特性：
+    1）使用发布/订阅消息模式，提供一对多的消息发布，解除应用程序耦合。
+    2）对负载内容屏蔽的消息传输。
+    3）使用    TCP/IP 提供网络连接。
+    4）有三种消息发布服务质量：
+    至多一次：消息发布完全依赖底层               TCP/IP 网络。会发生消息丢失或重复。
+    至少一次：确保消息到达，但消息重复可能会发生。
+    只有一次：确保消息到达一次。这一级别可用于如下情况，在计费系统中，消息重复或丢失会导致不正确的结
+果。
+    5）小型传输，开销很小，固定长度的头部是                   2 字节，协议交换最小化，以降低网络流量。
+
+1.2  文档目的
+
+    本文档描述了如何使用          MQTT。
+
+1.3  MQTT    使用流程
+
+    主要介绍     MQTT  功能的数据交互过程。
+                LYNQ
+                          CONFIDENTIAL
+MCU                                           模块                                            MQTT
+                                                                                            服务器
+     AT+MCONFIG=<client_id>
+     [,<usename>,<password>]
+
+      AT+MIPSTART=<hostname
+      >,<port>[,<version>]                                                                               若连接出现服务器返回错误，可对模块
+                                                           TCP established                               配置的用户名，密码，clientid          进行检查
+                                                                                                         校验
+    AT+MCONNECT=<cleanse                                   MQTT  建立连接
+    ssion>,<keepalive >
+                     +MCONNECT:SUCCESS
+                                                         发送数据订阅包
+   AT+MSUB=<topic>,<Qos    >                                                                         若在设定的        keepalive  时间内没有进行任
+                                                         服 务器   收到   数据   包                          何数据消息交互，客户端将会自动发送
+                     +MSUB:SUCCESS
+                                                         并进行    ACK  回复                              PINGREQ    数 据包
+   AT+MUNSUB=<topic>
+                                                         发送退订数据包
+
+                        +MUNSUB:SUCCESS                  服 务器   收到   数  据 包
+                                                         并进行         回复
+                                                                ACK                                   在发布/订阅消息的时候，设置的参数需要
+   AT+MPUB=<topic>,<qos>                                                                              满足    MQTT 协议，否则服务器无法处理会导
+   ,<retain>,<message>                                                                                致当前连接断开
+
+                                                                服务器收到数据包发送订
+                                                                阅主题的客户端
+   RECEIVCE
+
+                        +MSUB:  <topic>,<len> bytes,<message>
+
+
+    AT+MDISCONNCET                                             发送断开连接数据包
+
+               +MDISCONNCET:SUCCESS                            发送  TCP  断开连接请求
+
+   AT+MIPCLOSE                                            服务器断开消息并回复
+
+             LYNQ
+                                    CONFIDENTIAL
+    LYNQ
+CONFIDENTIAL
+LTE_标准(EC)_MQTT_应用指导
+
+
+2      AT      命令语句
+
+2.1   定义
+
+    ⚫  <CR>  回车符。
+    ⚫  <LF> 换行符。
+    ⚫  <…>  参数名称。实际命令行中不包含尖括号。
+    ⚫  […] 可选参数或     TA 信息响应的可选部分。实际命令行中不包含方括号。若无特别说明，配置
+命令中的可选参数被省略时，将默认使用其之前已设置的值或其默认值。
+    ⚫  下划线    参数的默认设置。
+
+2.2  AT   命令语句
+
+    前缀   AT 或 at 必须加在每个命令行的开头。输入               <CR>  将终止命令行。通常，命令后面跟随形
+式为<CR><LF><response><CR><LF>       的响应。在本文档中，仅显示响应               <response>，省略
+<CR><LF>。
+
+    AT 命令及响应类型
+                                                      返回相应设置命令或内部程序可支持
+ 测试命令               AT+<cmd>=?
+                                                      的参数取值列表或范围。
+
+ 查询命令               AT+<cmd>?                         返回相应设置命令的当前参数设置值。
+
+ 设置命令               AT+<cmd>=<p1>[,<p2>[,<p3>[...]]]  设置用户可自定义的参数值。
+ 执行 命 令       A T+<LYNQcmd>                           执行程序实现的功能。
+                     CONFIDENTIAL
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+1
+LTE_标准(EC)_MQTT_应用指导
+
+
+3      MQTT           AT      指令详细说明
+
+3.1  AT+MCONFIG          MQTT    参数配置
+
+该条指令用于配置        MQTT  的功能参数
+ 测试命令                          响应
+ AT+MCONFIG=?                  +MCONFIG:   ,,,(0-1),(0-2),(0-1),,
+                               OK
+
+ 设置命令                          响应
+ AT+MCONFIG=<clientid>[,       OK
+ <username>],[<password>][,<   或者
+ will_flag>,<will_qos>,<will_  ERROR
+ retain>,<will_topic>,<will_
+ message>]]
+ 读取指令                          响应
+ AT+MCONFIG?                   +MCONFIG:<clientid>[,<username>,<password>
+                               [,<will_flag>,<will_qos>,<will_retain>,<will_topic>,<will
+                               _message>]]
+                               OK
+ 最大响应时间                        300 毫秒
+ 备注                            如果服务器不用用户名和密码，请不要输入用户名和密码，否则
+                               将登录失败
+
+参数 定义 如 下:    LYNQ
+ 参数                      描述
+
+ <clientid>              此参数用于允许服务器识别客户端身份信息,最大长度为256字节
+ <username>              此参数用于登录服务器的用户名.             最大长度为256字节
+
+ <password>          CONFIDENTIAL此参数用于登录服务器的密码.    最大长度为256字节
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+2
+LTE_标准(EC)_MQTT_应用指导
+
+ <will_flag>             配置will flag ,Value of:
+                         1 配置will flag，如果将标志设置为        1，Will QoS  和  Will Retain 字段必
+                         须存在于    Connect  标志字节中，并且        will topic和 Will Message 字段必
+                         须存在于有效负载中。
+                         0 无需配置will   flag，不使用   will Qos, will retain，will topic，will message，
+                         请设置   0,
+ <will_qos>              整型。发送消息时的         QoS  级别
+                         0  will message最多发送一次
+                         1  will message至少发送一次
+                         2  will message只发送一次
+ <will_retain>           整型。保留标志Retain      Flag:
+                         0 服务器不得存储will_message消息，也不得删除或替换任何现有的
+                         retained message；
+                         1 服务器必须存储遗嘱消息及其             QoS。
+
+ <will_topic>            Will topic的名称。最大长度为       256字节。
+
+ <will_message>          will_message的内容。最大长度为         1024字节，目前AT命令行长度最大为
+                         1024字节，所以will_message的长度实际不能达到1024字节。
+
+3.2  AT+MQTTMIX          设置配置其他参数             Packet   Id
+
+该指令主要用于设置其他配置参数(               packetid).
+
+测试命令                      响应
+AT+MQTTMIX=?              +MQTTMIX:  (0-1)
+                          OK
+
+
+读取命令                      响应
+AT+  MQ TT MIX ?    LYNQ+MQTTMIX:    <mode>
+                          OK
+
+设置命令                      响应
+AT+MQTTMIX=<mode>         OK
+                          或者
+                     CONFIDENTIALERROR
+最大响应时间                    300 毫秒
+
+参数定义如下:
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+3
+LTE_标准(EC)_MQTT_应用指导
+
+参数             描述
+
+<mode>         0  无packetid  模式(默认模式)
+               1  packetid 模式
+
+3.3  AT+MQTTSSL          配置    MQTT    的  SSL   模式
+
+该指令主要用于配置连接MQTT是否使用SSL模式.
+
+测试命令                      响应
+AT+MQTTSSL=?              +MQTTSSL:  (0-1),(0-1)
+
+                          OK
+
+测试命令                      响应
+AT+MQTTSSL?               +MQTTSSL:  <action>,<cert>
+
+                          OK
+
+设置命令                      响应
+AT+MQTTSSL=<action>[,c    OK
+ert]                      或者
+                          ERROR
+最大响应时间                    300 毫秒
+备注                        该指令必须在AT+MCONNECT之前配置
+
+参数定义如下:
+
+参数             描述
+
+<action>       0 不使用SSL，默认值是0.
+        1 使 用 SSLYNQL
+<cert>         0  忽略证书
+               1  使用证书
+3.4  AT+MIPSTARCONFIDENTIALT 配置服务器地址，端口和协议版本
+该命令用于配置       MQTT  服务器的地址，端口和连接使用的协议版本
+ 测试命令                        响应
+ AT+MIPSTART=?               +MIPSTART:,(0-65535),(3-4)
+                             OK
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+4
+LTE_标准(EC)_MQTT_应用指导
+
+ 设置命令                        响应
+ AT+MIPSTART=<address>,      OK
+ <port>[,<version>]          +MIPSTART: <result>
+                             或者
+                             ERROR
+ 读取命令                        响应
+ AT+MIPSTART?                +MIPSTART:<address>,<port>,<version>
+                             OK
+
+ 最大响应时间                      300 毫秒
+参数定义如下:
+
+ 参数                          描述
+
+ <ipaddress>                 MQTT  服务器域名或      IP 地址。最大长度为        256 字节。
+
+ <port>                      MQTT服务器端口。该值介于0和65535之间，默认值为0。
+
+ <version>                   MQTT  版本。值介于       3 和  4 之间，默认值为       3。
+                             3 代表  MQTT   版本   3.1
+                             4 代表  MQTT   版本   3.1.1。
+ <result>                    指令执行的返回结果
+                             SUCCESS    -----表示成功
+                             FAILURE    -----表示失败
+
+3.5  AT+MCONNECT          请求连接        MQTT   服务器
+
+该指令用于配置会话清除和心跳保活时间，进行                     MQTT  服务器的连接
+ 测试命令                    响应
+ AT+ MC ON NE CT =?   LYNQ+MCONNECT:(0-1), (30-1800)
+                         OK
+
+ 设置命令                    响应
+ AT+MCONNECT=<clean      OK
+ _session>,<keepalive>   +MCONNECT:   <result>
+                     CONFIDENTIAL或者
+                         ERROR
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+5
+LTE_标准(EC)_MQTT_应用指导
+
+ 读取命令                    响应
+ AT+MCONNECT?            +MCONNECT:<clean_session>,<keepalive>
+                         OK
+
+ 最大响应时间                  5 秒
+参数定义如下:
+ 参数                      描述
+
+ <clean_session>         整型。配置会话类型.
+                         0 客户端断开连接后，服务器必须存储该客户端的订阅消息
+                         1 服务器必须删除之前保留的客户端任何消息
+ <keepalive>             整型。保活时间。范围：30~1800；默认值：60；单位：秒。。
+
+ <result>                连接MQTT服务器返回的结果：
+                         SUCCESS    -----表示成功
+                         FAILURE   -----表示失败
+
+3.6  AT+MPUB       发布消息
+
+该指令用于发布定长消息到服务器。
+ 测试命令                      响应
+ AT+MPUB=?                 +MPUB:  ,(0-2),(0-1),
+                           OK
+
+ 设置指令                      响应
+ AT+MPUB=<topic>,<qos>     OK
+ ,<retain>,<message>       或者
+                           ERROR
+                           第一种情况.如果       AT+MQTTMIX=0   时,响应是这样的：
+           LYNQ+MPUB:<result>
+                           第二种情况.如果       AT+MQTTMIX=1   时,响应是这样的：
+                           如果   qos=0, 没有任何返回;      如果   Qos 大于  0, 首先返回:
+                           +MPUBID:<packetid>
+                           然后再返回:
+                           +MPUBACK:   <packetid> //当 Qos 为 1
+                     CONFIDENTIAL+MPUBREC: <packetid>//当 Qos 为 2
+                           最后返回：
+                           +MPUBCOMP:<packetid>
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+6
+LTE_标准(EC)_MQTT_应用指导
+
+ 读取指令                      响应
+ AT+MPUB?                  +MPUB:<topic> ,<qos>,<retain>,<message>
+                           OK
+
+ 最大响应时间                    5 秒
+参数定义如下:
+ 参数                      描述
+
+ <topic>                 消息主题的名称，最大长度是256字节
+
+ <qos>                   整型。客户端想要发布消息时的              QoS 等级。
+                         0  最多发送一次
+                         1  最少发送一次
+                         2  只发送一次
+ <retain>                整型。消息发送到当前订阅者后，服务器是否保存该消息。
+                         0  不保存
+                         1  保存
+ <message>               发布的消息内容.       最大长度是512字节。
+
+ <result>                发布消息返回的结果
+                         SUCCESS    -----表示成功
+                         FAILURE   -----表示失败
+ <packetid>              整型。数据包消息标识符。范围：1~65535
+
+3.7  AT+MPUBEX         发布较长的消息
+
+该条指令主要用于发布较长的或者含有特殊字符的消息
+ 测试命令                         响应
+ AT+MPUBEX=?                  +MPUBEX:  ,(0-2),(0-1),(1-4096)
+           LYNQOK
+                     CONFIDENTIAL
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+7
+LTE_标准(EC)_MQTT_应用指导
+
+ 设置命令                         响应
+ AT+MPUBEX=<topic>,<qos>      > 响应>后，输入需要发送的数据，若数据实际长度大于<msgLen>
+ ,<retain>,<msgLen>           多出来的字节会被删
+                              OK
+                              或者
+                              ERROR
+                              根据设置的不同，有两种不同的返回结果。
+                              第一种情况.如果       AT+MQTTMIX=0,响应是:
+                              +MPUBEX:<result>
+                              第二种情况.如果       AT+MQTTMIX=1   时,响应是这样的：
+                              如果   qos=0, 没有任何返回;      如果  Qos 大于   0, 首先返回:
+                              +MPUBID:<packetid>
+                              然后再返回:
+                              +MPUBACK:   <packetid> //当 Qos 为 1
+                              +MPUBREC:   <packetid>//当 Qos 为 2
+                              最后返回：
+                              +MPUBCOMP:    <packetid>
+ 读取命令                         响应
+ AT+MPUBEX?                   +MPUBEX:<topic>  ,<qos>,<retain>,<msgLen>
+                              OK
+
+ 最大响应时间                       10 秒
+ 备注                           1   在此模式下，可以发送特殊格式的数据，例如                    JSON
+                              2   输入模式不会发送保活心跳包，所以输入数据
+                                  间隔不能长于      keepalive，否则连接可能已断开
+                              3   输入模式一次不应超过          4096 个字节
+                              4   当数据长度达到<msgLen>时，自动退出输入
+                              5   进入数据模式      10s 以上，会自动退出并返回          ERROR
+参数定义如下
+ 参数                      描述
+ <top ic>      LYNQ消息主题的名称，最大长度是256字节
+ <qos>                   整型。客户端想要发布消息时的              QoS  等级。
+                         0  最多发送一次
+                         3  最少发送一次
+                         4  只发送一次
+ <retain>            CONFIDENTIAL整型。消息发送到当前订阅者后，服务器是否保存该消息。
+                         0  不保存
+                         1  保存
+ <msgLen>                发布的消息内容的长度.          最大长度是4096字节。
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+8
+LTE_标准(EC)_MQTT_应用指导
+
+ <result>                发布消息返回的结果
+                         SUCCESS    -----表示成功
+                         FAILURE   -----表示失败
+ <packetid>              整型。数据包消息标识符。范围：1~65535
+
+3.8  AT+MSUB        订阅主题
+
+该命令用于订阅主题，当订阅主题发布消息时，服务器会把这些消息作为                                PUBLISH  消息传输到客户
+端。
+ 测试命令                    响应
+ AT+MSUB=?               +MSUB: ,(0-2)
+                         OK
+
+ 读取命令                    响应
+ AT+MSUB?                +MSUB:<topic> ,<qos>
+                         OK
+                         每次查询只能显示到上次订阅的主题
+ 设置命令                    响应
+ AT+MSUB=<topic>,<qos    OK
+ >                       或者
+                         ERROR
+                         根据不同的设置会出现两种不同的响应情况
+                         第一种情况：如果        AT+MQTTMIX=0,   响应是:
+                         +MSUB: <result>
+                         第一种情况：如果        AT+MQTTMIX=0,   响应是:
+                         +MSUBID: <packetid>
+                         +MSUBACK:  <packetid>
+                         最多只能订阅      50 个主题
+                         如果订阅主题成功，客户端将开始接收来自其他客户端的消息。
+                         接收的格式:
+           LYNQ+MSUB:           <topic>,<len> bytes,<message>
+ 最大响应时间                  5 秒
+
+参数定义如下:
+参数             描述    CONFIDENTIAL
+<topic>        消息主题的名称，最大长度是256字节
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+9
+LTE_标准(EC)_MQTT_应用指导
+
+<qos>          整型。客户端想要发布消息时的              QoS  等级。
+               0   最多发送一次
+               1   最少发送一次
+               2    只发送一次
+<len>          接收消息的长度.
+<message>      接收消息的内容
+
+<result>       发布消息返回的结果
+               SUCCESS     -----表示成功
+               FAILURE   -----表示失败
+<packetid>     整型。数据包消息标识符。范围：1~65535
+
+
+3.9  AT+MUNSUB          取消主题订阅
+
+该指令用于取消主题的订阅
+
+设置命令                      响应
+AT+MUNSUB=<topic>         根据设置的不同，有两种不同的响应:
+                          第一种情况：如果        AT+MQTTMIX=0,   响应是:
+                          OK
+                          +MUNSUB:   <result>
+
+                          第二种情况：如果        AT+MQTTMIX=1,   响应是:
+                          OK
+                          +MUNSUBID:  <packetid>
+                          +MUNSUBACK:    <packetid>
+最大响应时间                    5 秒
+参数定义如下:
+参数    描 述  LYNQ
+<topic>        消息主题的名称，最大长度是256字节
+
+<result>       取消订阅主题返回的结果
+               SUCCESS     -----表示成功
+               FAILURE   -----表示失败
+<packetid>     整型。CONFIDENTIAL数据包消息标识符。范围：1~65535
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+10
+LTE_标准(EC)_MQTT_应用指导
+
+3.10   AT+MDISCONNECT           断开    MQTT    连接
+
+该指令用于断开MQTT服务器的连接.
+
+执行命令                      响应
+AT+MDISCONNECT            OK
+                          +MDISCONNECT:   <result>
+                          或者
+                          Already disconnect
+                          或者
+                          ERROR
+最大响应时间                    5 秒
+
+参数定义如下:
+
+参数             描述
+
+<result>       断开MQTT服务器的返回结果:
+               SUCCESS     -----表示成功
+               FAILURE   -----表示失败
+
+3.11   AT+MIPCLOSE        关闭    MQTT    客户端会话.
+
+该指令用于关闭       MQTT  客户端会话
+执行命令                      响应
+AT+MIPCLOSE               OK
+                          +MIPCLOSE:<result>
+                          或者
+                          ERROR
+最大 响应 时 间        LYNQ5     秒
+参数定义如下:
+
+参数             描述
+
+<result>       关闭MQTT客户端会话的返回结果:
+               SUCCESS     -----表示成功
+               FAILURCONFIDENTIALE -----表示失败
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+11
+LTE_标准(EC)_MQTT_应用指导
+
+3.12   AT+MQTTSTATU           查询    MQTT    的连接状态
+
+该指令用于查询MQTT的连接状态.
+
+执行命令                      响应
+AT+MQTTSTATU              +MQTTSTATU:<statu>
+                          OK
+
+最大响应时间                    300 毫秒
+
+参数定义如下:
+
+参数             描述
+
+<statu>        断开MQTT服务器的返回结果:
+               0  -----MQTT没有建立连接
+               1  -----MQTT连接成功服务器
+
+
+           LYNQ
+                     CONFIDENTIAL
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+12
+LTE_标准(EC)_MQTT_应用指导
+
+
+4      MQTT          常见问题处理
+
+4.1  AT  命令执行失败
+
+    执行   MQTT AT  命令后，若返回       ERROR，请检查对应的        AT 命令配置的命令参数是否合法。
+
+4.2   连接失败
+
+    若执行    AT+MIPSTART  配置服务器的地址和端口失败，请检查是否已使用                      AT+MCONNFIG   配置；
+    若执行    AT+MCONNECT    请求连接    MQTT  服务器出现失败，请检查：
+      1：通过    AT+CGREG?查询     PS 域状态并确保已注册了          PS 域。
+      2：通过    AT+CPSI?查询网络注册的信号值
+      3：配置的服务器地址，端口是否可用
+      4：配置的    ClientId,用户名，密码是否正确，以及服务器是否支持该协议版本，保活时间是否设
+置合理等
+
+4.3   订阅/发布/退订失败
+
+    若执行    AT+MPUB/AT+MSUB/AT+MUNSUB       返回失败，请检查是否连接            MQTT  服务器；
+    在此之后请检查：
+      1：输入的     topic 主题，消息内容是否符合规范。
+      2：确保连接的服务器支持当时的配置                Qos 质量等级
+      3：当前模块注网以及信号是否处于正常范围内
+           LYNQ
+                     CONFIDENTIAL
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+13
+LTE_标准(EC)_MQTT_应用指导
+
+
+5      MQTT          功能用法示例
+
+5.1   普通非     SSL   的  MQTT    操作用法示例
+
+   步骤     描述                        命令
+
+   1                                AT+MCONFIG="rdatest"
+          配置连接     MQTT  的连接参数
+                                    OK
+   2                                AT+MIPSTART="test.mosquitto.org",1883,3
+          配置连接     MQTT  的服务器地
+                                    OK
+                                    +MIPSTART: SUCCESS
+          址，端口和协议版本
+
+   3                                AT+MCONNECT=1,60
+          配置连接     MQTT  的会话清除
+                                    OK
+                                    ++MCONNECT:   SUCCESS
+          标志以及心跳保活时间
+
+   4                                AT+MSUB="/111",0
+          订阅主题
+                                    OK
+                                    +MSUB:  SUCCESS
+                                    如果客户端订阅某个主题，而其他设备将同一主题发布到
+                                    服务器，模块会上报如下信息：
+                                    +MSUB:”/111”,36 bytes,"This is the payload related to
+                                    topic"
+   5                                AT+MPUB="/111",0,0,"hello
+          发布主题
+                                    OK
+                                    +MPUB:  SUCCESS
+   6   发布 较 长的 或 者LYNQ含有特殊字         AT+MPUBEX="/   topic/pub",0,0,46
+          符的消息时使用。                  > {"name":"Sam","id":"01","birthday":"20180808"}
+          响应>后，输入并发送，数据             OK
+          最大长度是      1500 字节，多出     +MPUBEX:   SUCCESS
+          的部分会被忽略。
+                                    若客户端订阅了名为"topic/pub"的主题，且其他设备向服
+                     CONFIDENTIAL务器发布了相同主题，模块会上报如下信息：
+                                    +MSUB:  ”/topic/pub”,46 bytes,
+                                    {"name":"Sam","id":"01","birthday":"20180808"}"
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+14
+LTE_标准(EC)_MQTT_应用指导
+
+   7                                AT+MUNSUB="/111"
+          取消订阅的主题
+                                    OK
+                                    +MUNSUB:   SUCCESS
+   8                                AT+MDISCONNECT
+          断开   MQTT  服务器连接
+                                    OK
+                                    +MDISCONNECT:    SUCCESS
+   9                                AT+MIPCLOSE
+          关闭   MQTT  连接
+                                    OK
+                                    +MIPCLOSE:  SUCCESS
+
+5.2   SSL  的  MQTT    操作用法示例
+
+   步骤     描述                        命令
+
+   1      配置连接     MQTT  使用  SSL    AT+MQTTSSL=1,0(不使用证书)
+                                    OK
+                                    AT+MQTTSSL=1,1(使用证书)
+                                    OK
+   2                                AT+MCONFIG="rdatest"
+          配置连接     MQTT  的连接参数
+                                    OK
+   3                                AT+MIPSTART="182.148.114.87",31162,3
+          配置连接     MQTT  的服务器地
+                                    OK
+                                    +MIPSTART: SUCCESS
+          址，端口和协议版本
+
+   4                                AT+MCONNECT=1,60
+          配置连接     MQTT  的会话清除
+                                    OK
+                                    +MCONNECT:   SUCCESS
+          标志以及心跳保活时间
+
+   5                                AT+MSUB="/111",0
+          订阅主题
+                                    OK
+                                    +MSUB:  SUCCESS
+           LYNQ如果客户端订阅某个主题，而其他设备将同一主题发布到
+                                    服务器，模块会上报如下信息：
+                                    +MSUB:”/111”,36 bytes,"This is the payload related to
+                                    topic"
+   6                                AT+MPUB="/111",0,0,"hello
+          发布主题
+                     CONFIDENTIALOK
+                                    +MPUB:  SUCCESS
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+15
+LTE_标准(EC)_MQTT_应用指导
+
+   7      发布较长的或者含有特殊字              AT+MPUBEX="/   topic/pub",0,0,46
+          符的消息时使用。                  > {"name":"Sam","id":"01","birthday":"20180808"}
+          响应>后，输入并发送，数据             OK
+          最大长度是      1500 字节，多出     +MPUBEX:   SUCCESS
+          的部分会被忽略。
+                                    若客户端订阅了名为"topic/pub"的主题，且其他设备向服
+                                    务器发布了相同主题，模块会上报如下信息：
+                                    +MSUB:”/topic/pub”,46 bytes,
+                                    {"name":"Sam","id":"01","birthday":"20180808"}"
+   8                                AT+MUNSUB="/111"
+          取消订阅的主题
+                                    OK
+                                    +MUNSUB:   SUCCESS
+   9                                AT+MDISCONNECT
+          断开   MQTT  服务器连接
+                                    OK
+                                    +MDISCONNECT:    SUCCESS
+   10                               AT+MIPCLOSE
+          关闭   MQTT  连接
+                                    OK
+                                    +MIPCLOSE:  SUCCESS
+
+
+           LYNQ
+                     CONFIDENTIAL
+
+
+Copyright© Shanghai Mobiletek Communication Ltd.
+16
