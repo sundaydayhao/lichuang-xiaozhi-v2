@@ -8,8 +8,10 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <atomic>
 #include <vector>
 
+class AiPrintFeature;
 class UiLcdDisplay : public SpiLcdDisplay {
 public:
     static constexpr size_t kMenuItemCount = 12;
@@ -22,8 +24,12 @@ public:
     ~UiLcdDisplay() override;
 
     void SetCameraPreviewCallback(std::function<void()> callback);
+    bool HandleFeatureSpeechRecognized(const std::string& text);
+    bool IsAiPrintActive() const;
 
 private:
+    friend class AiPrintFeature;
+
     enum class CameraMode {
         kPhoto = 0,
         kVideo = 1,
@@ -92,6 +98,7 @@ private:
     int current_feature_option_id_ = 0;
     esp_timer_handle_t camera_preview_timer_ = nullptr;
     std::function<void()> camera_preview_callback_;
+    std::atomic<bool> ai_print_generation_running_ = false;
 
     void InitializeMainMenu();
     void InitializeCameraScreen();
@@ -112,6 +119,10 @@ private:
     void UpdateCameraModeDisplay();
     void ExecuteCameraAction();
     void UpdateCameraBleStatus(bool connected);
+    void ShowAiPrintListeningState();
+    void ShowAiPrintGeneratingState();
+    void ShowAiPrintErrorState(const std::string& message);
+    void ShowAiPrintResultImage(std::unique_ptr<LvglImage> image);
     void ApplyFeatureVisual(int option_id);
     void ClearFeatureVisual();
     void RefreshMenuIconImages();

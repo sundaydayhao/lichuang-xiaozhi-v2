@@ -9,6 +9,7 @@
 #include "mcp_server.h"
 #include "assets.h"
 #include "boards/bread-compact-ml307camtou/lamp_G.h"
+#include "display/ui_display.h"
 #include "settings.h"
 
 #include <cstring>
@@ -267,6 +268,7 @@ void Application::ToggleChatState() {
 
     if (device_state_ == kDeviceStateIdle) {
         Schedule([this]() {
+            suppress_server_messages_ = false;
             if (!protocol_->IsAudioChannelOpened()) {
                 SetDeviceState(kDeviceStateConnecting);
                 if (!protocol_->OpenAudioChannel()) {
@@ -305,6 +307,7 @@ void Application::StartListening() {
     
     if (device_state_ == kDeviceStateIdle) {
         Schedule([this]() {
+            suppress_server_messages_ = false;
             if (!protocol_->IsAudioChannelOpened()) {
                 SetDeviceState(kDeviceStateConnecting);
                 if (!protocol_->OpenAudioChannel()) {
@@ -443,7 +446,10 @@ void Application::Start() {
         board.SetPowerSaveMode(true);
         Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
-            display->SetChatMessage("system", "");
+            auto* ui_display = dynamic_cast<UiLcdDisplay*>(display);
+            if (!(suppress_server_messages_ && ui_display != nullptr && ui_display->IsAiPrintActive())) {
+                display->SetChatMessage("system", "");
+            }
             SetDeviceState(kDeviceStateIdle);
         });
     });
@@ -451,6 +457,10 @@ void Application::Start() {
         // Parse JSON data
         auto type = cJSON_GetObjectItem(root, "type");
         if (strcmp(type->valuestring, "tts") == 0) {
+            if (suppress_server_messages_) {
+                ESP_LOGI(TAG, "Ignoring TTS while local feature is handling the request");
+                return;
+            }
             auto state = cJSON_GetObjectItem(root, "state");
             if (strcmp(state->valuestring, "start") == 0) {
                 Schedule([this]() {
@@ -487,12 +497,29 @@ void Application::Start() {
                 }
             }
         } else if (strcmp(type->valuestring, "stt") == 0) {
+            if (suppress_server_messages_) {
+                ESP_LOGI(TAG, "Ignoring STT while local feature request is active");
+                return;
+            }
             auto text = cJSON_GetObjectItem(root, "text");
             if (cJSON_IsString(text)) {
                 ESP_LOGI(TAG, ">> %s", text->valuestring);
 
-                // 本地关键词直达舵机：先动再说
                 std::string content(text->valuestring);
+                auto* ui_display = dynamic_cast<UiLcdDisplay*>(display);
+                if (ui_display != nullptr && ui_display->HandleFeatureSpeechRecognized(content)) {
+                    suppress_server_messages_ = true;
+                    Schedule([this]() {
+                        if (protocol_ != nullptr && protocol_->IsAudioChannelOpened()) {
+                            protocol_->CloseAudioChannel();
+                        } else {
+                            SetDeviceState(kDeviceStateIdle);
+                        }
+                    });
+                    return;
+                }
+
+                // 本地关键词直达舵机：先动再说
                 Schedule([content]() {
                     // 解析“按摩X分钟/分”指令（优先处理，支持阿拉伯数字与常见中文数字）
                     size_t pos_a = content.find("按摩");
@@ -572,6 +599,10 @@ void Application::Start() {
                 });
             }
         } else if (strcmp(type->valuestring, "llm") == 0) {
+            if (suppress_server_messages_) {
+                ESP_LOGI(TAG, "Ignoring LLM metadata while local feature is handling the request");
+                return;
+            }
             auto emotion = cJSON_GetObjectItem(root, "emotion");
             if (cJSON_IsString(emotion)) {
                 Schedule([this, display, emotion_str = std::string(emotion->valuestring)]() {
@@ -715,6 +746,7 @@ void Application::OnWakeWordDetected() {
     }
 
     if (device_state_ == kDeviceStateIdle) {
+        suppress_server_messages_ = false;
         audio_service_.EncodeWakeWord();
 
         if (!protocol_->IsAudioChannelOpened()) {
@@ -892,6 +924,7 @@ bool Application::UpgradeFirmware(Ota& ota, const std::string& url) {
 
 void Application::WakeWordInvoke(const std::string& wake_word) {
     if (device_state_ == kDeviceStateIdle) {
+        suppress_server_messages_ = false;
         ToggleChatState();
         Schedule([this, wake_word]() {
             if (protocol_) {

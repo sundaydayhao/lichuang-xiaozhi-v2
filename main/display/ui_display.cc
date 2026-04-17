@@ -1,5 +1,6 @@
 #include "ui_display.h"
 
+#include "ai_print_feature.h"
 #include "assets.h"
 #include "ble_hid.h"
 #include "board.h"
@@ -34,6 +35,7 @@ constexpr int kMenuSwipeThreshold = 14;
 constexpr int kMenuButtonHitPadding = 8;
 constexpr int kVisionOptionId = 4;
 constexpr int kRemoteSelfieOptionId = 6;
+constexpr int kAiPrintOptionId = 7;
 constexpr int kSettingsOptionId = 12;
 constexpr int kBackTargetMainMenu = 0;
 constexpr int kBackTargetSettings = 1;
@@ -77,6 +79,14 @@ UiLcdDisplay::~UiLcdDisplay() {
 
 void UiLcdDisplay::SetCameraPreviewCallback(std::function<void()> callback) {
     camera_preview_callback_ = std::move(callback);
+}
+
+bool UiLcdDisplay::IsAiPrintActive() const {
+    return current_feature_option_id_ == kAiPrintOptionId;
+}
+
+bool UiLcdDisplay::HandleFeatureSpeechRecognized(const std::string& text) {
+    return AiPrintFeature::HandleSpeechRecognized(*this, text);
 }
 
 const char* UiLcdDisplay::GetMenuText(int option_id) const {
@@ -277,6 +287,122 @@ void UiLcdDisplay::RefreshMenuIconImages() {
     }
 }
 
+void UiLcdDisplay::ShowAiPrintListeningState() {
+    DisplayLockGuard lock(this);
+    if (preview_timer_ != nullptr) {
+        esp_timer_stop(preview_timer_);
+    }
+    preview_image_cached_.reset();
+
+    if (preview_image_ != nullptr) {
+        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (feature_background_image_ != nullptr) {
+        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (emoji_box_ != nullptr) {
+        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (chat_message_label_ != nullptr) {
+        lv_label_set_text(chat_message_label_, "请直接说出你想画的内容\n例如：画一只戴围巾的大熊猫");
+    }
+}
+
+void UiLcdDisplay::ShowAiPrintGeneratingState() {
+    DisplayLockGuard lock(this);
+    if (preview_timer_ != nullptr) {
+        esp_timer_stop(preview_timer_);
+    }
+    preview_image_cached_.reset();
+
+    if (preview_image_ != nullptr) {
+        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (feature_background_image_ != nullptr) {
+        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (emoji_box_ != nullptr) {
+        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (chat_message_label_ != nullptr) {
+        lv_label_set_text(chat_message_label_, "正在生成图片\n请稍候...");
+    }
+}
+
+void UiLcdDisplay::ShowAiPrintErrorState(const std::string& message) {
+    DisplayLockGuard lock(this);
+    if (preview_timer_ != nullptr) {
+        esp_timer_stop(preview_timer_);
+    }
+    preview_image_cached_.reset();
+
+    if (preview_image_ != nullptr) {
+        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (feature_background_image_ != nullptr) {
+        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (emoji_box_ != nullptr) {
+        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (chat_message_label_ != nullptr) {
+        lv_label_set_text(chat_message_label_, message.c_str());
+    }
+}
+
+void UiLcdDisplay::ShowAiPrintResultImage(std::unique_ptr<LvglImage> image) {
+    if (image == nullptr) {
+        ShowAiPrintErrorState("图片生成成功\n但设备解码失败");
+        return;
+    }
+
+    DisplayLockGuard lock(this);
+    if (preview_timer_ != nullptr) {
+        esp_timer_stop(preview_timer_);
+    }
+
+    preview_image_cached_ = std::move(image);
+    if (preview_image_ == nullptr) {
+        return;
+    }
+
+    auto img_dsc = preview_image_cached_->image_dsc();
+    lv_image_set_src(preview_image_, img_dsc);
+
+    const lv_coord_t max_width = width_ - 24;
+    const lv_coord_t max_height = height_ - kStatusBarHeight - 28;
+    lv_coord_t scale = 256;
+    if (img_dsc->header.w > 0 && img_dsc->header.h > 0) {
+        const lv_coord_t scale_w = (max_width * 256) / img_dsc->header.w;
+        const lv_coord_t scale_h = (max_height * 256) / img_dsc->header.h;
+        scale = std::min(scale_w, scale_h);
+        if (scale > 256) {
+            scale = 256;
+        }
+        if (scale <= 0) {
+            scale = 1;
+        }
+    }
+
+    lv_image_set_scale(preview_image_, scale);
+    lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_align(preview_image_, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_remove_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+
+    if (feature_background_image_ != nullptr) {
+        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (emoji_box_ != nullptr) {
+        lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (chat_message_label_ != nullptr) {
+        lv_label_set_text(chat_message_label_, "");
+    }
+}
+
 void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     current_feature_option_id_ = option_id;
 
@@ -294,6 +420,7 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     if (background == nullptr) {
         lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
         if (preview_image_ != nullptr) {
+            lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
             lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
         }
         lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
@@ -310,6 +437,7 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     lv_image_set_src(feature_background_image_, background);
     lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
     if (preview_image_ != nullptr) {
+        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
         lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
     }
     lv_obj_remove_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
@@ -328,6 +456,7 @@ void UiLcdDisplay::ClearFeatureVisual() {
         lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
     }
     if (preview_image_ != nullptr) {
+        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
         lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
     }
     if (emoji_box_ != nullptr) {
@@ -860,6 +989,10 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         StartCameraPreview(100);
     } else {
         StopCameraPreview();
+    }
+
+    if (option_id == kAiPrintOptionId) {
+        ShowAiPrintListeningState();
     }
 }
 
