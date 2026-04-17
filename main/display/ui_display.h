@@ -13,6 +13,8 @@
 class UiLcdDisplay : public SpiLcdDisplay {
 public:
     static constexpr size_t kMenuItemCount = 12;
+    static constexpr size_t kSettingsItemCount = 4;
+    static constexpr size_t kAboutInfoItemCount = 7;
 
     UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                  int width, int height, int offset_x, int offset_y,
@@ -34,6 +36,16 @@ private:
         bool moved = false;
     };
 
+    struct SettingsItemData {
+        UiLcdDisplay* display = nullptr;
+        int item_id = 0;
+    };
+
+    struct BackButtonData {
+        UiLcdDisplay* display = nullptr;
+        int target = 0;
+    };
+
     lv_obj_t* ai_screen_ = nullptr;
     lv_obj_t* feature_background_image_ = nullptr;
     lv_obj_t* menu_screen_ = nullptr;
@@ -44,6 +56,20 @@ private:
     std::array<lv_obj_t*, kMenuItemCount> menu_button_icon_images_ = {};
     std::array<lv_obj_t*, kMenuItemCount> menu_button_labels_ = {};
     std::array<MenuButtonData, kMenuItemCount> menu_button_data_ = {};
+
+    lv_obj_t* settings_screen_ = nullptr;
+    lv_obj_t* settings_title_label_ = nullptr;
+    std::array<lv_obj_t*, kSettingsItemCount> settings_item_name_labels_ = {};
+    std::array<SettingsItemData, kSettingsItemCount> settings_item_data_ = {};
+    BackButtonData settings_back_button_data_ = {};
+
+    lv_obj_t* about_screen_ = nullptr;
+    lv_obj_t* about_title_label_ = nullptr;
+    lv_obj_t* about_content_ = nullptr;
+    std::array<lv_obj_t*, kAboutInfoItemCount> about_info_title_labels_ = {};
+    std::array<lv_obj_t*, kAboutInfoItemCount> about_info_value_labels_ = {};
+    std::array<lv_obj_t*, kAboutInfoItemCount> about_info_separator_labels_ = {};
+    BackButtonData about_back_button_data_ = {};
 
     lv_obj_t* camera_screen_ = nullptr;
     lv_obj_t* camera_mode_btn_left_ = nullptr;
@@ -70,6 +96,8 @@ private:
     void InitializeMainMenu();
     void InitializeCameraScreen();
     void InitializeGallery();
+    void InitializeSettingsScreen();
+    void InitializeAboutScreen();
     void MoveStatusBarToScreen(lv_obj_t* target_screen);
 
     void StartCameraPreview(int interval_ms);
@@ -78,6 +106,8 @@ private:
     void OnMenuOptionClicked(int option_id);
     void ReturnToMainMenu();
     void ReturnToCameraScreen();
+    void ShowSettingsScreen();
+    void ShowAboutScreen();
     void SetCameraMode(CameraMode mode);
     void UpdateCameraModeDisplay();
     void ExecuteCameraAction();
@@ -85,6 +115,18 @@ private:
     void ApplyFeatureVisual(int option_id);
     void ClearFeatureVisual();
     void RefreshMenuIconImages();
+    const char* GetSettingsTitle() const;
+    const char* GetSettingsItemName(int index) const;
+    const char* GetAboutTitle() const;
+    const char* GetAboutInfoTitle(int index) const;
+    void RefreshAboutScreenTexts();
+    std::string GetFirmwareVersionForDisplay() const;
+    std::string GetActivationCodeForDisplay() const;
+    std::string GetServerAddressForDisplay() const;
+    std::string GetWifiMacAddressForDisplay() const;
+    std::string Get4gImeiForDisplay() const;
+    std::string GetIpAddressForDisplay() const;
+    std::string GetUuidForDisplay() const;
     const lv_image_dsc_t* LoadAssetImage(const char* asset_name);
     const char* GetMenuText(int option_id) const;
     const char* GetMenuIconAssetName(int option_id) const;
@@ -102,8 +144,12 @@ private:
     static void OnCameraScreenGesture(lv_event_t* e);
     static void OnGalleryScreenGesture(lv_event_t* e);
     static void OnPhotoViewerGesture(lv_event_t* e);
+    static void OnSettingsScreenGesture(lv_event_t* e);
+    static void OnAboutScreenGesture(lv_event_t* e);
     static void OnCameraModeButtonClicked(lv_event_t* e);
     static void OnCameraActionButtonClicked(lv_event_t* e);
+    static void OnSettingsItemClicked(lv_event_t* e);
+    static void OnBackButtonClicked(lv_event_t* e);
     static void OnGalleryItemClicked(lv_event_t* e);
     static void OnGalleryItemLongPressed(lv_event_t* e);
     static void OnDeleteDialogCancel(lv_event_t* e);

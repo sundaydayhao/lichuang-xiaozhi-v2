@@ -2,12 +2,18 @@
 
 #include "assets.h"
 #include "ble_hid.h"
+#include "board.h"
 #include "lvgl_theme.h"
+#include "settings.h"
+#include "system_info.h"
 #include "widgets/list/lv_list.h"
 
+#include <at_modem.h>
+#include <esp_app_desc.h>
 #include <esp_err.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
+#include <wifi_station.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -28,6 +34,9 @@ constexpr int kMenuSwipeThreshold = 14;
 constexpr int kMenuButtonHitPadding = 8;
 constexpr int kVisionOptionId = 4;
 constexpr int kRemoteSelfieOptionId = 6;
+constexpr int kSettingsOptionId = 12;
+constexpr int kBackTargetMainMenu = 0;
+constexpr int kBackTargetSettings = 1;
 
 lv_dir_t GetGestureDirection() {
     lv_indev_t* indev = lv_indev_active();
@@ -147,6 +156,86 @@ const char* UiLcdDisplay::GetFeatureBackgroundAssetName(int option_id) const {
     default:
         return nullptr;
     }
+}
+
+const char* UiLcdDisplay::GetSettingsTitle() const {
+    return "设置";
+}
+
+const char* UiLcdDisplay::GetSettingsItemName(int index) const {
+    static const char* kTexts[kSettingsItemCount] = {
+        "WiFi/4G 切换",
+        "服务器切换",
+        "语言切换",
+        "关于本机",
+    };
+    return (index >= 0 && index < static_cast<int>(kSettingsItemCount)) ? kTexts[index] : "";
+}
+
+const char* UiLcdDisplay::GetAboutTitle() const {
+    return "关于本机";
+}
+
+const char* UiLcdDisplay::GetAboutInfoTitle(int index) const {
+    static const char* kTexts[kAboutInfoItemCount] = {
+        "固件版本",
+        "绑定验证码",
+        "服务器地址",
+        "WiFi MAC",
+        "4G IMEI",
+        "IP地址",
+        "UUID",
+    };
+    return (index >= 0 && index < static_cast<int>(kAboutInfoItemCount)) ? kTexts[index] : "";
+}
+
+std::string UiLcdDisplay::GetFirmwareVersionForDisplay() const {
+    const esp_app_desc_t* app_desc = esp_app_get_description();
+    if (app_desc == nullptr || app_desc->version[0] == '\0') {
+        return "unknown";
+    }
+    return app_desc->version;
+}
+
+std::string UiLcdDisplay::GetActivationCodeForDisplay() const {
+    return "暂无";
+}
+
+std::string UiLcdDisplay::GetServerAddressForDisplay() const {
+    Settings wifi_settings("wifi", false);
+    std::string url = wifi_settings.GetString("ota_url");
+    if (!url.empty()) {
+        return url;
+    }
+
+    Settings websocket_settings("websocket", false);
+    url = websocket_settings.GetString("url");
+    return url.empty() ? "未配置" : url;
+}
+
+std::string UiLcdDisplay::GetWifiMacAddressForDisplay() const {
+    std::string mac = SystemInfo::GetMacAddress();
+    return mac.empty() ? "unknown" : mac;
+}
+
+std::string UiLcdDisplay::Get4gImeiForDisplay() const {
+    auto* modem = dynamic_cast<AtModem*>(Board::GetInstance().GetNetwork());
+    if (modem == nullptr) {
+        return "未配置";
+    }
+
+    std::string imei = modem->GetImei();
+    return imei.empty() ? "未配置" : imei;
+}
+
+std::string UiLcdDisplay::GetIpAddressForDisplay() const {
+    const std::string& ip = WifiStation::GetInstance().GetIpAddress();
+    return ip.empty() ? "未配置" : ip;
+}
+
+std::string UiLcdDisplay::GetUuidForDisplay() const {
+    std::string uuid = Board::GetInstance().GetUuid();
+    return uuid.empty() ? "unknown" : uuid;
 }
 
 
@@ -453,6 +542,180 @@ void UiLcdDisplay::InitializeGallery() {
     lv_obj_set_style_pad_all(gallery_list_, 0, 0);
 }
 
+void UiLcdDisplay::InitializeSettingsScreen() {
+    DisplayLockGuard lock(this);
+
+    if (settings_screen_ != nullptr) {
+        return;
+    }
+
+    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
+
+    settings_screen_ = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(settings_screen_, lv_color_white(), 0);
+    lv_obj_set_style_border_width(settings_screen_, 0, 0);
+    lv_obj_set_style_pad_all(settings_screen_, 0, 0);
+    lv_obj_set_scrollbar_mode(settings_screen_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_event_cb(settings_screen_, OnSettingsScreenGesture, LV_EVENT_GESTURE, this);
+    lv_obj_clear_flag(settings_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
+
+    settings_title_label_ = lv_label_create(settings_screen_);
+    lv_label_set_text(settings_title_label_, GetSettingsTitle());
+    lv_obj_align(settings_title_label_, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_text_font(settings_title_label_, lvgl_theme->text_font()->font(), 0);
+    lv_obj_set_style_text_color(settings_title_label_, lv_color_black(), 0);
+
+    lv_obj_t* content = lv_obj_create(settings_screen_);
+    lv_obj_set_size(content, LV_HOR_RES, LV_VER_RES - 84);
+    lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 84);
+    lv_obj_set_style_bg_color(content, lv_color_white(), 0);
+    lv_obj_set_style_border_width(content, 0, 0);
+    lv_obj_set_style_pad_all(content, 0, 0);
+    lv_obj_set_scroll_dir(content, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_OFF);
+
+    const int item_height = 46;
+    for (int i = 0; i < static_cast<int>(kSettingsItemCount); ++i) {
+        lv_obj_t* item = lv_btn_create(content);
+        lv_obj_set_size(item, LV_HOR_RES, item_height);
+        lv_obj_set_pos(item, 0, i * item_height);
+        lv_obj_set_style_radius(item, 0, 0);
+        lv_obj_set_style_bg_color(item, lv_color_white(), 0);
+        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(item, 0, 0);
+        lv_obj_set_style_shadow_width(item, 0, 0);
+        lv_obj_set_style_pad_left(item, 16, 0);
+        lv_obj_set_style_pad_right(item, 16, 0);
+
+        settings_item_name_labels_[i] = lv_label_create(item);
+        lv_label_set_text(settings_item_name_labels_[i], GetSettingsItemName(i));
+        lv_obj_align(settings_item_name_labels_[i], LV_ALIGN_LEFT_MID, 0, 0);
+        lv_obj_set_style_text_color(settings_item_name_labels_[i], lv_color_black(), 0);
+        lv_obj_set_style_text_font(settings_item_name_labels_[i], lvgl_theme->text_font()->font(), 0);
+
+        lv_obj_t* arrow_label = lv_label_create(item);
+        lv_label_set_text(arrow_label, ">");
+        lv_obj_align(arrow_label, LV_ALIGN_RIGHT_MID, 0, 0);
+        lv_obj_set_style_text_color(arrow_label, lv_color_hex(0xB0B0B0), 0);
+        lv_obj_set_style_text_font(arrow_label, lvgl_theme->text_font()->font(), 0);
+
+        settings_item_data_[i] = SettingsItemData{this, i};
+        lv_obj_set_user_data(item, &settings_item_data_[i]);
+        lv_obj_add_event_cb(item, OnSettingsItemClicked, LV_EVENT_CLICKED, nullptr);
+
+        if (i < static_cast<int>(kSettingsItemCount) - 1) {
+            lv_obj_t* separator = lv_obj_create(content);
+            lv_obj_set_size(separator, LV_HOR_RES - 32, 1);
+            lv_obj_set_pos(separator, 16, (i + 1) * item_height);
+            lv_obj_set_style_bg_color(separator, lv_color_hex(0xD9D9D9), 0);
+            lv_obj_set_style_bg_opa(separator, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(separator, 0, 0);
+            lv_obj_set_style_radius(separator, 0, 0);
+            lv_obj_clear_flag(separator, LV_OBJ_FLAG_CLICKABLE);
+        }
+    }
+
+    lv_obj_t* back_btn = lv_btn_create(settings_screen_);
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 34);
+    lv_obj_set_style_radius(back_btn, 18, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_white(), 0);
+    lv_obj_set_style_border_width(back_btn, 1, 0);
+    lv_obj_set_style_border_color(back_btn, lv_color_hex(0xD9D9D9), 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_set_style_pad_all(back_btn, 0, 0);
+
+    lv_obj_t* back_label = lv_label_create(back_btn);
+    lv_label_set_text(back_label, "<");
+    lv_obj_center(back_label);
+    lv_obj_set_style_text_color(back_label, lv_color_black(), 0);
+    lv_obj_set_style_text_font(back_label, lvgl_theme->text_font()->font(), 0);
+
+    settings_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
+    lv_obj_set_user_data(back_btn, &settings_back_button_data_);
+    lv_obj_add_event_cb(back_btn, OnBackButtonClicked, LV_EVENT_CLICKED, nullptr);
+}
+
+void UiLcdDisplay::InitializeAboutScreen() {
+    DisplayLockGuard lock(this);
+
+    if (about_screen_ != nullptr) {
+        return;
+    }
+
+    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
+
+    about_screen_ = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(about_screen_, lv_color_white(), 0);
+    lv_obj_set_style_border_width(about_screen_, 0, 0);
+    lv_obj_set_style_pad_all(about_screen_, 0, 0);
+    lv_obj_set_scrollbar_mode(about_screen_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_event_cb(about_screen_, OnAboutScreenGesture, LV_EVENT_GESTURE, this);
+    lv_obj_clear_flag(about_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
+
+    about_title_label_ = lv_label_create(about_screen_);
+    lv_label_set_text(about_title_label_, GetAboutTitle());
+    lv_obj_align(about_title_label_, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_text_font(about_title_label_, lvgl_theme->text_font()->font(), 0);
+    lv_obj_set_style_text_color(about_title_label_, lv_color_black(), 0);
+
+    about_content_ = lv_obj_create(about_screen_);
+    lv_obj_set_size(about_content_, LV_HOR_RES, LV_VER_RES - 84);
+    lv_obj_align(about_content_, LV_ALIGN_TOP_MID, 0, 84);
+    lv_obj_set_style_bg_color(about_content_, lv_color_white(), 0);
+    lv_obj_set_style_border_width(about_content_, 0, 0);
+    lv_obj_set_style_pad_left(about_content_, 16, 0);
+    lv_obj_set_style_pad_right(about_content_, 16, 0);
+    lv_obj_set_style_pad_top(about_content_, 0, 0);
+    lv_obj_set_style_pad_bottom(about_content_, 16, 0);
+    lv_obj_set_scroll_dir(about_content_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(about_content_, LV_SCROLLBAR_MODE_OFF);
+
+    for (int i = 0; i < static_cast<int>(kAboutInfoItemCount); ++i) {
+        about_info_title_labels_[i] = lv_label_create(about_content_);
+        lv_label_set_text(about_info_title_labels_[i], GetAboutInfoTitle(i));
+        lv_obj_set_width(about_info_title_labels_[i], LV_HOR_RES - 32);
+        lv_obj_set_style_text_color(about_info_title_labels_[i], lv_color_hex(0x666666), 0);
+        lv_obj_set_style_text_font(about_info_title_labels_[i], lvgl_theme->text_font()->font(), 0);
+
+        about_info_value_labels_[i] = lv_label_create(about_content_);
+        lv_obj_set_width(about_info_value_labels_[i], LV_HOR_RES - 32);
+        lv_label_set_long_mode(about_info_value_labels_[i], LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_color(about_info_value_labels_[i], lv_color_black(), 0);
+        lv_obj_set_style_text_font(about_info_value_labels_[i], lvgl_theme->text_font()->font(), 0);
+
+        if (i < static_cast<int>(kAboutInfoItemCount) - 1) {
+            about_info_separator_labels_[i] = lv_obj_create(about_content_);
+            lv_obj_set_size(about_info_separator_labels_[i], LV_HOR_RES - 32, 1);
+            lv_obj_set_style_bg_color(about_info_separator_labels_[i], lv_color_hex(0xD9D9D9), 0);
+            lv_obj_set_style_bg_opa(about_info_separator_labels_[i], LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(about_info_separator_labels_[i], 0, 0);
+            lv_obj_set_style_radius(about_info_separator_labels_[i], 0, 0);
+            lv_obj_clear_flag(about_info_separator_labels_[i], LV_OBJ_FLAG_CLICKABLE);
+        }
+    }
+
+    lv_obj_t* back_btn = lv_btn_create(about_screen_);
+    lv_obj_set_size(back_btn, 36, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 34);
+    lv_obj_set_style_radius(back_btn, 18, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_white(), 0);
+    lv_obj_set_style_border_width(back_btn, 1, 0);
+    lv_obj_set_style_border_color(back_btn, lv_color_hex(0xD9D9D9), 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_set_style_pad_all(back_btn, 0, 0);
+
+    lv_obj_t* back_label = lv_label_create(back_btn);
+    lv_label_set_text(back_label, "<");
+    lv_obj_center(back_label);
+    lv_obj_set_style_text_color(back_label, lv_color_black(), 0);
+    lv_obj_set_style_text_font(back_label, lvgl_theme->text_font()->font(), 0);
+
+    about_back_button_data_ = BackButtonData{this, kBackTargetSettings};
+    lv_obj_set_user_data(back_btn, &about_back_button_data_);
+    lv_obj_add_event_cb(back_btn, OnBackButtonClicked, LV_EVENT_CLICKED, nullptr);
+}
+
 void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
     if (status_bar_ == nullptr || target_screen == nullptr) {
         return;
@@ -480,6 +743,74 @@ void UiLcdDisplay::StopCameraPreview() {
     }
 }
 
+void UiLcdDisplay::ShowSettingsScreen() {
+    if (settings_screen_ == nullptr) {
+        InitializeSettingsScreen();
+    }
+
+    DisplayLockGuard lock(this);
+    lv_screen_load(settings_screen_);
+    MoveStatusBarToScreen(settings_screen_);
+}
+
+void UiLcdDisplay::ShowAboutScreen() {
+    if (about_screen_ == nullptr) {
+        InitializeAboutScreen();
+    }
+
+    RefreshAboutScreenTexts();
+    DisplayLockGuard lock(this);
+    if (about_content_ != nullptr) {
+        lv_obj_scroll_to_y(about_content_, 0, LV_ANIM_OFF);
+    }
+    lv_screen_load(about_screen_);
+    MoveStatusBarToScreen(about_screen_);
+}
+
+void UiLcdDisplay::RefreshAboutScreenTexts() {
+    if (about_title_label_ == nullptr || about_content_ == nullptr) {
+        return;
+    }
+
+    DisplayLockGuard lock(this);
+    lv_label_set_text(about_title_label_, GetAboutTitle());
+
+    const std::array<std::string, kAboutInfoItemCount> values = {
+        GetFirmwareVersionForDisplay(),
+        GetActivationCodeForDisplay(),
+        GetServerAddressForDisplay(),
+        GetWifiMacAddressForDisplay(),
+        Get4gImeiForDisplay(),
+        GetIpAddressForDisplay(),
+        GetUuidForDisplay(),
+    };
+
+    int y = 0;
+    for (int i = 0; i < static_cast<int>(kAboutInfoItemCount); ++i) {
+        if (about_info_title_labels_[i] == nullptr || about_info_value_labels_[i] == nullptr) {
+            continue;
+        }
+
+        lv_label_set_text(about_info_title_labels_[i], GetAboutInfoTitle(i));
+        lv_label_set_text(about_info_value_labels_[i], values[i].c_str());
+        lv_obj_update_layout(about_content_);
+
+        lv_obj_set_pos(about_info_title_labels_[i], 0, y);
+        y += lv_obj_get_height(about_info_title_labels_[i]) + 4;
+
+        lv_obj_set_pos(about_info_value_labels_[i], 0, y);
+        y += lv_obj_get_height(about_info_value_labels_[i]) + 10;
+
+        if (i < static_cast<int>(kAboutInfoItemCount) - 1 &&
+            about_info_separator_labels_[i] != nullptr) {
+            lv_obj_set_pos(about_info_separator_labels_[i], 0, y);
+            y += 13;
+        }
+    }
+
+    lv_obj_update_layout(about_content_);
+}
+
 void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     ESP_LOGI(TAG, "Menu option %d clicked", option_id);
 
@@ -501,6 +832,14 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         DisplayLockGuard lock(this);
         lv_screen_load(camera_screen_);
         MoveStatusBarToScreen(camera_screen_);
+        return;
+    }
+
+    if (option_id == kSettingsOptionId) {
+        gallery_swipe_enabled_ = false;
+        StopCameraPreview();
+        ClearFeatureVisual();
+        ShowSettingsScreen();
         return;
     }
 
@@ -929,6 +1268,20 @@ void UiLcdDisplay::OnPhotoViewerGesture(lv_event_t* e) {
     }
 }
 
+void UiLcdDisplay::OnSettingsScreenGesture(lv_event_t* e) {
+    auto* display = static_cast<UiLcdDisplay*>(lv_event_get_user_data(e));
+    if (display != nullptr && GetGestureDirection() == LV_DIR_RIGHT) {
+        display->ReturnToMainMenu();
+    }
+}
+
+void UiLcdDisplay::OnAboutScreenGesture(lv_event_t* e) {
+    auto* display = static_cast<UiLcdDisplay*>(lv_event_get_user_data(e));
+    if (display != nullptr && GetGestureDirection() == LV_DIR_RIGHT) {
+        display->ShowSettingsScreen();
+    }
+}
+
 void UiLcdDisplay::OnCameraModeButtonClicked(lv_event_t* e) {
     auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
     auto* display = static_cast<UiLcdDisplay*>(lv_obj_get_user_data(target));
@@ -948,6 +1301,35 @@ void UiLcdDisplay::OnCameraActionButtonClicked(lv_event_t* e) {
     auto* display = static_cast<UiLcdDisplay*>(lv_obj_get_user_data(target));
     if (display != nullptr) {
         display->ExecuteCameraAction();
+    }
+}
+
+void UiLcdDisplay::OnSettingsItemClicked(lv_event_t* e) {
+    auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
+    auto* data = static_cast<SettingsItemData*>(lv_obj_get_user_data(target));
+    if (data == nullptr || data->display == nullptr) {
+        return;
+    }
+
+    if (data->item_id == 3) {
+        data->display->ShowAboutScreen();
+        return;
+    }
+
+    std::string notification = data->display->GetSettingsItemName(data->item_id);
+    notification += " 开发中";
+    data->display->ShowNotification(notification.c_str(), 1200);
+}
+
+void UiLcdDisplay::OnBackButtonClicked(lv_event_t* e) {
+    auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
+    auto* data = static_cast<BackButtonData*>(lv_obj_get_user_data(target));
+    if (data != nullptr && data->display != nullptr) {
+        if (data->target == kBackTargetSettings) {
+            data->display->ShowSettingsScreen();
+        } else {
+            data->display->ReturnToMainMenu();
+        }
     }
 }
 
