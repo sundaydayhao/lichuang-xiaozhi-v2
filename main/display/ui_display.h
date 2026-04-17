@@ -5,12 +5,15 @@
 
 #include <array>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 class UiLcdDisplay : public SpiLcdDisplay {
 public:
+    static constexpr size_t kMenuItemCount = 12;
+
     UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                  int width, int height, int offset_x, int offset_y,
                  bool mirror_x, bool mirror_y, bool swap_xy);
@@ -27,6 +30,8 @@ private:
     struct MenuButtonData {
         UiLcdDisplay* display = nullptr;
         int option_id = 0;
+        lv_point_t press_point = {0, 0};
+        bool moved = false;
     };
 
     lv_obj_t* ai_screen_ = nullptr;
@@ -34,8 +39,10 @@ private:
     lv_obj_t* menu_page_container_ = nullptr;
     lv_obj_t* menu_page1_ = nullptr;
     lv_obj_t* menu_page2_ = nullptr;
-    std::array<lv_obj_t*, 10> menu_buttons_ = {};
-    std::array<MenuButtonData, 10> menu_button_data_ = {};
+    std::array<lv_obj_t*, kMenuItemCount> menu_buttons_ = {};
+    std::array<lv_obj_t*, kMenuItemCount> menu_button_icon_images_ = {};
+    std::array<lv_obj_t*, kMenuItemCount> menu_button_labels_ = {};
+    std::array<MenuButtonData, kMenuItemCount> menu_button_data_ = {};
 
     lv_obj_t* camera_screen_ = nullptr;
     lv_obj_t* camera_mode_btn_left_ = nullptr;
@@ -52,8 +59,10 @@ private:
     lv_obj_t* current_photo_img_ = nullptr;
     std::unique_ptr<LvglImage> current_photo_image_;
     std::vector<std::string> photo_files_;
+    std::map<std::string, std::shared_ptr<LvglImage>> asset_image_cache_;
 
     bool gallery_swipe_enabled_ = false;
+    int current_feature_option_id_ = 0;
     esp_timer_handle_t camera_preview_timer_ = nullptr;
     std::function<void()> camera_preview_callback_;
 
@@ -72,6 +81,13 @@ private:
     void UpdateCameraModeDisplay();
     void ExecuteCameraAction();
     void UpdateCameraBleStatus(bool connected);
+    void ApplyFeatureVisual(int option_id);
+    void ClearFeatureVisual();
+    void RefreshMenuIconImages();
+    const lv_image_dsc_t* LoadAssetImage(const char* asset_name);
+    const char* GetMenuText(int option_id) const;
+    const char* GetMenuIconAssetName(int option_id) const;
+    const char* GetFeatureBackgroundAssetName(int option_id) const;
 
     void ShowGallery();
     void RefreshGalleryList();

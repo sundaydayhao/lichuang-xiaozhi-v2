@@ -14,11 +14,8 @@ set(SOURCES "audio/audio_codec.cc"
             "led/gpio_led.cc"
             "display/display.cc"
             "display/lcd_display.cc"
-            "display/ui_assets.cc"
             "display/ui_display.cc"
-            "display/oled_display.cc"
             "display/lvgl_display/lvgl_display.cc"
-            "display/emote_display.cc"
             "display/lvgl_display/emoji_collection.cc"
             "display/lvgl_display/lvgl_theme.cc"
             "display/lvgl_display/lvgl_font.cc"
@@ -69,6 +66,10 @@ set(BOARD_TYPE "bread-compact-ml307camtou")
 set(BUILTIN_TEXT_FONT font_puhui_16_4)
 set(BUILTIN_ICON_FONT font_awesome_16_4)
 set(DEFAULT_EMOJI_COLLECTION twemoji_64)
+set(DEFAULT_ASSETS_EXTRA_FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/images")
+file(GLOB_RECURSE DEFAULT_ASSETS_EXTRA_FILE_DEPS
+    "${DEFAULT_ASSETS_EXTRA_FILES}/*"
+)
 
 file(GLOB BOARD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_TYPE}/*.cc
@@ -185,6 +186,7 @@ function(build_default_assets_bin)
         DEPENDS
             ${SDKCONFIG}
             ${PROJECT_DIR}/scripts/build_default_assets.py
+            ${DEFAULT_ASSETS_EXTRA_FILE_DEPS}
         COMMENT "Building default assets.bin based on configuration"
         VERBATIM
     )

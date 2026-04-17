@@ -1,6 +1,6 @@
 #include "ui_display.h"
 
-#include "ui_assets.h"
+#include "assets.h"
 #include "ble_hid.h"
 #include "lvgl_theme.h"
 #include "widgets/list/lv_list.h"
@@ -23,6 +23,12 @@ namespace {
 
 const char* TAG = "CompactDisplay";
 constexpr int kStatusBarHeight = 27;
+constexpr int kMenuIconDisplaySize = 34;
+constexpr int kMenuIconCornerRadius = 10;
+constexpr int kMenuSwipeThreshold = 14;
+constexpr int kMenuButtonHitPadding = 8;
+constexpr int kVisionOptionId = 4;
+constexpr int kRemoteSelfieOptionId = 6;
 
 lv_dir_t GetGestureDirection() {
     lv_indev_t* indev = lv_indev_active();
@@ -65,6 +71,189 @@ void UiLcdDisplay::SetCameraPreviewCallback(std::function<void()> callback) {
     camera_preview_callback_ = std::move(callback);
 }
 
+const char* UiLcdDisplay::GetMenuText(int option_id) const {
+    switch (option_id) {
+    case 1:
+        return "AI闹钟";
+    case 2:
+        return "百科问答";
+    case 3:
+        return "口语陪练";
+    case 4:
+        return "拍识万物";
+    case 5:
+        return "睡前故事";
+    case 6:
+        return "遥控自拍";
+    case 7:
+        return "AI打印";
+    case 8:
+        return "单词听写";
+    case 9:
+        return "看相";
+    case 10:
+        return "魔镜美妆";
+    case 11:
+        return "设置";
+    case 12:
+        return "助眠音乐";
+    default:
+        return "";
+    }
+}
+
+const char* UiLcdDisplay::GetMenuIconAssetName(int option_id) const {
+    switch (option_id) {
+    case 1:
+        return "menu_ai_alarm.png";
+    case 2:
+        return "menu_encyclopedia.png";
+    case 3:
+        return "menu_oral_practice.png";
+    case 4:
+        return "menu_vision.png";
+    case 5:
+        return "menu_bedtime_story.png";
+    case 6:
+        return "menu_remote_selfie.png";
+    case 7:
+        return "menu_ai_print.png";
+    case 8:
+        return "menu_word_dictation.png";
+    case 9:
+        return "menu_face_reading.png";
+    case 10:
+        return "menu_magic_mirror.png";
+    case 11:
+        return "menu_settings.png";
+    case 12:
+        return "menu_sleep_music.png";
+    default:
+        return nullptr;
+    }
+}
+
+const char* UiLcdDisplay::GetFeatureBackgroundAssetName(int option_id) const {
+    switch (option_id) {
+    case 2:
+        return "bg_encyclopedia.png";
+    case 3:
+        return "bg_oral_practice.png";
+    case 5:
+        return "bg_bedtime_story.png";
+    case 8:
+        return "bg_word_dictation.png";
+    case 9:
+        return "bg_face_reading.png";
+    default:
+        return nullptr;
+    }
+}
+
+const lv_image_dsc_t* UiLcdDisplay::LoadAssetImage(const char* asset_name) {
+    if (asset_name == nullptr || asset_name[0] == '\0') {
+        return nullptr;
+    }
+
+    auto& image = asset_image_cache_[asset_name];
+    if (image == nullptr) {
+        void* ptr = nullptr;
+        size_t size = 0;
+        if (!Assets::GetInstance().GetAssetData(asset_name, ptr, size)) {
+            ESP_LOGE(TAG, "Failed to load UI asset: %s", asset_name);
+            asset_image_cache_.erase(asset_name);
+            return nullptr;
+        }
+        image = CreateCachedRgb565Image(ptr, size);
+        if (image == nullptr) {
+            ESP_LOGE(TAG, "Failed to decode UI asset into PSRAM cache: %s", asset_name);
+            asset_image_cache_.erase(asset_name);
+            return nullptr;
+        }
+    }
+
+    return image->image_dsc();
+}
+
+void UiLcdDisplay::RefreshMenuIconImages() {
+    for (size_t i = 0; i < kMenuItemCount; ++i) {
+        if (menu_button_icon_images_[i] == nullptr || !lv_obj_is_valid(menu_button_icon_images_[i])) {
+            continue;
+        }
+
+        const lv_image_dsc_t* icon = LoadAssetImage(GetMenuIconAssetName(static_cast<int>(i) + 1));
+        if (icon != nullptr) {
+            lv_image_set_src(menu_button_icon_images_[i], icon);
+        }
+    }
+}
+
+void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
+    current_feature_option_id_ = option_id;
+
+    DisplayLockGuard lock(this);
+    if (preview_timer_ != nullptr) {
+        esp_timer_stop(preview_timer_);
+    }
+    preview_image_cached_.reset();
+
+    if (preview_image_ == nullptr || emoji_box_ == nullptr) {
+        return;
+    }
+
+    const lv_image_dsc_t* background = LoadAssetImage(GetFeatureBackgroundAssetName(option_id));
+    if (background == nullptr) {
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+        if (chat_message_label_ != nullptr) {
+            lv_label_set_text(chat_message_label_, GetMenuText(option_id));
+        }
+        return;
+    }
+
+    if (chat_message_label_ != nullptr) {
+        lv_label_set_text(chat_message_label_, "");
+    }
+
+    const lv_coord_t available_w = LV_HOR_RES - 16;
+    const lv_coord_t available_h = LV_VER_RES - kStatusBarHeight - 16;
+    lv_coord_t zoom = 256;
+    if (background->header.w > 0 && background->header.h > 0) {
+        const lv_coord_t zoom_w = (available_w * 256) / background->header.w;
+        const lv_coord_t zoom_h = (available_h * 256) / background->header.h;
+        zoom = std::min(zoom_w, zoom_h);
+        if (zoom > 256) {
+            zoom = 256;
+        }
+    }
+
+    lv_image_set_src(preview_image_, background);
+    lv_image_set_scale(preview_image_, zoom);
+    lv_obj_center(preview_image_);
+    lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void UiLcdDisplay::ClearFeatureVisual() {
+    current_feature_option_id_ = 0;
+
+    DisplayLockGuard lock(this);
+    if (preview_timer_ != nullptr) {
+        esp_timer_stop(preview_timer_);
+    }
+    preview_image_cached_.reset();
+
+    if (preview_image_ != nullptr) {
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (emoji_box_ != nullptr) {
+        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (chat_message_label_ != nullptr) {
+        lv_label_set_text(chat_message_label_, "");
+    }
+}
+
 void UiLcdDisplay::InitializeMainMenu() {
     DisplayLockGuard lock(this);
 
@@ -103,52 +292,74 @@ void UiLcdDisplay::InitializeMainMenu() {
     lv_obj_set_style_pad_all(menu_page2_, 0, 0);
     lv_obj_set_scrollbar_mode(menu_page2_, LV_SCROLLBAR_MODE_OFF);
 
-    const char* btn_texts[] = {
-        "口语陪练", "睡前故事", "拍识万物", "亲子通话", "唐诗宋词",
-        "百科问答", "单词听写", "AI自拍", "快速录音", "声控按摩",
-    };
-    const lv_image_dsc_t* btn_icons[] = {
-        &kouyu, &shuiqian, &paishi, &qinzi, &tangshi,
-        &baike, &danci, &AIzi, &kuaisu, &shengkong,
-    };
+    const int btn_size_w = 72;
+    const int btn_size_h = 72;
+    const int btn_spacing_x = 4;
+    const int btn_spacing_y = 28;
+    const int start_y = 50;
+    const int menu_columns = 3;
+    const int total_menu_width =
+        menu_columns * btn_size_w + (menu_columns - 1) * btn_spacing_x;
+    const int start_x = std::max(0, (static_cast<int>(LV_HOR_RES) - total_menu_width) / 2);
 
-    constexpr int btn_size_w = 34;
-    constexpr int btn_size_h = 34;
-    constexpr int btn_spacing_x = 42;
-    constexpr int btn_spacing_y = 60;
-    constexpr int start_x = 44;
-    constexpr int start_y = 50;
-
-    for (int i = 0; i < 10; ++i) {
+    for (size_t i = 0; i < kMenuItemCount; ++i) {
         lv_obj_t* parent_page = (i < 6) ? menu_page1_ : menu_page2_;
 
         menu_buttons_[i] = lv_btn_create(parent_page);
         lv_obj_set_size(menu_buttons_[i], btn_size_w, btn_size_h);
 
-        int page_index = (i < 6) ? i : (i - 6);
+        int page_index = (i < 6) ? static_cast<int>(i) : static_cast<int>(i - 6);
         int x = start_x + (page_index % 3) * (btn_size_w + btn_spacing_x);
         int y = start_y + (page_index / 3) * (btn_size_h + btn_spacing_y);
         lv_obj_set_pos(menu_buttons_[i], x, y);
         lv_obj_set_style_pad_all(menu_buttons_[i], 0, 0);
+        lv_obj_set_style_pad_hor(menu_buttons_[i], 0, 0);
+        lv_obj_set_style_pad_ver(menu_buttons_[i], 0, 0);
         lv_obj_set_style_border_width(menu_buttons_[i], 0, 0);
         lv_obj_set_style_bg_opa(menu_buttons_[i], LV_OPA_0, 0);
+        lv_obj_set_style_bg_opa(menu_buttons_[i], LV_OPA_0, LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(menu_buttons_[i], LV_OPA_0, LV_STATE_FOCUSED);
+        lv_obj_set_style_shadow_width(menu_buttons_[i], 0, 0);
+        lv_obj_set_style_outline_width(menu_buttons_[i], 0, 0);
+        lv_obj_set_ext_click_area(menu_buttons_[i], kMenuButtonHitPadding);
+        lv_obj_add_flag(menu_buttons_[i], LV_OBJ_FLAG_GESTURE_BUBBLE);
+        lv_obj_add_flag(menu_buttons_[i], LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+        lv_obj_add_flag(menu_buttons_[i], LV_OBJ_FLAG_PRESS_LOCK);
 
-        lv_obj_t* img = lv_image_create(menu_buttons_[i]);
-        lv_image_set_src(img, btn_icons[i]);
-        lv_obj_set_size(img, 34, 34);
-        lv_obj_align(img, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_t* icon_container = lv_obj_create(menu_buttons_[i]);
+        lv_obj_set_size(icon_container, kMenuIconDisplaySize, kMenuIconDisplaySize);
+        lv_obj_align(icon_container, LV_ALIGN_TOP_MID, 0, 0);
+        lv_obj_set_style_radius(icon_container, kMenuIconCornerRadius, 0);
+        lv_obj_set_style_clip_corner(icon_container, true, 0);
+        lv_obj_set_style_bg_opa(icon_container, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(icon_container, 0, 0);
+        lv_obj_set_style_pad_all(icon_container, 0, 0);
+        lv_obj_clear_flag(icon_container, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(icon_container, LV_OBJ_FLAG_EVENT_BUBBLE);
 
-        lv_obj_t* label = lv_label_create(parent_page);
-        lv_obj_set_pos(label, x - 10, y + btn_size_h + 6);
-        lv_label_set_text(label, btn_texts[i]);
-        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_set_style_text_font(label, lvgl_theme->text_font()->font(), 0);
-        lv_obj_set_style_text_color(label, lv_color_black(), 0);
+        lv_obj_t* img = lv_image_create(icon_container);
+        menu_button_icon_images_[i] = img;
+        lv_obj_set_size(img, kMenuIconDisplaySize, kMenuIconDisplaySize);
+        lv_image_set_inner_align(img, LV_IMAGE_ALIGN_CONTAIN);
+        lv_obj_add_flag(img, LV_OBJ_FLAG_EVENT_BUBBLE);
+        lv_obj_center(img);
 
-        menu_button_data_[i] = MenuButtonData{this, i + 1};
+        menu_button_labels_[i] = lv_label_create(menu_buttons_[i]);
+        lv_obj_set_width(menu_button_labels_[i], btn_size_w);
+        lv_obj_set_height(menu_button_labels_[i], btn_size_h - 38);
+        lv_label_set_long_mode(menu_button_labels_[i], LV_LABEL_LONG_WRAP);
+        lv_obj_align(menu_button_labels_[i], LV_ALIGN_TOP_MID, 0, 38);
+        lv_label_set_text(menu_button_labels_[i], GetMenuText(static_cast<int>(i) + 1));
+        lv_obj_set_style_text_align(menu_button_labels_[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_font(menu_button_labels_[i], lvgl_theme->text_font()->font(), 0);
+        lv_obj_set_style_text_color(menu_button_labels_[i], lv_color_black(), 0);
+        lv_obj_add_flag(menu_button_labels_[i], LV_OBJ_FLAG_EVENT_BUBBLE);
+
+        menu_button_data_[i] = MenuButtonData{this, static_cast<int>(i) + 1};
         lv_obj_set_user_data(menu_buttons_[i], &menu_button_data_[i]);
-        lv_obj_add_event_cb(menu_buttons_[i], OnMenuButtonClicked, LV_EVENT_CLICKED, nullptr);
+        lv_obj_add_event_cb(menu_buttons_[i], OnMenuButtonClicked, LV_EVENT_ALL, nullptr);
     }
+    RefreshMenuIconImages();
 
     camera_screen_ = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(camera_screen_, lv_color_white(), 0);
@@ -194,7 +405,9 @@ void UiLcdDisplay::InitializeCameraScreen() {
     lv_obj_align(camera_mode_btn_left_, LV_ALIGN_LEFT_MID, 40, 0);
     lv_obj_clear_flag(camera_mode_btn_left_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t* video_icon_img = lv_image_create(camera_mode_btn_left_);
-    lv_image_set_src(video_icon_img, &video_icon);
+    if (const lv_image_dsc_t* icon = LoadAssetImage("menu_settings.png"); icon != nullptr) {
+        lv_image_set_src(video_icon_img, icon);
+    }
     lv_obj_center(video_icon_img);
     lv_obj_set_user_data(camera_mode_btn_left_, this);
     lv_obj_add_event_cb(camera_mode_btn_left_, OnCameraModeButtonClicked, LV_EVENT_CLICKED, nullptr);
@@ -215,7 +428,9 @@ void UiLcdDisplay::InitializeCameraScreen() {
     lv_obj_align(camera_mode_btn_right_, LV_ALIGN_RIGHT_MID, -40, 0);
     lv_obj_clear_flag(camera_mode_btn_right_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t* photo_icon_img = lv_image_create(camera_mode_btn_right_);
-    lv_image_set_src(photo_icon_img, &camera_icon);
+    if (const lv_image_dsc_t* icon = LoadAssetImage("menu_remote_selfie.png"); icon != nullptr) {
+        lv_image_set_src(photo_icon_img, icon);
+    }
     lv_obj_center(photo_icon_img);
     lv_obj_set_user_data(camera_mode_btn_right_, this);
     lv_obj_add_event_cb(camera_mode_btn_right_, OnCameraModeButtonClicked, LV_EVENT_CLICKED, nullptr);
@@ -276,27 +491,11 @@ void UiLcdDisplay::StopCameraPreview() {
 void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     ESP_LOGI(TAG, "Menu option %d clicked", option_id);
 
-    if (option_id >= 1 && option_id <= 7) {
-        if (lv_screen_active() == camera_screen_) {
-            BleHid::GetInstance().Deinitialize();
-        }
-
-        {
-            DisplayLockGuard lock(this);
-            lv_screen_load(ai_screen_);
-            MoveStatusBarToScreen(ai_screen_);
-        }
-
-        gallery_swipe_enabled_ = (option_id == 3);
-        if (gallery_swipe_enabled_) {
-            StartCameraPreview(100);
-        } else {
-            StopCameraPreview();
-        }
+    if (option_id < 1 || option_id > static_cast<int>(kMenuItemCount)) {
         return;
     }
 
-    if (option_id == 8) {
+    if (option_id == kRemoteSelfieOptionId) {
         auto& ble_hid = BleHid::GetInstance();
         ble_hid.Initialize();
         ble_hid.OnConnectionStateChanged([this](bool connected) {
@@ -304,11 +503,32 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         });
         UpdateCameraBleStatus(ble_hid.IsConnected());
 
+        ClearFeatureVisual();
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
         DisplayLockGuard lock(this);
         lv_screen_load(camera_screen_);
         MoveStatusBarToScreen(camera_screen_);
+        return;
+    }
+
+    if (lv_screen_active() == camera_screen_) {
+        BleHid::GetInstance().Deinitialize();
+    }
+
+    ApplyFeatureVisual(option_id);
+
+    {
+        DisplayLockGuard lock(this);
+        lv_screen_load(ai_screen_);
+        MoveStatusBarToScreen(ai_screen_);
+    }
+
+    gallery_swipe_enabled_ = (option_id == kVisionOptionId);
+    if (gallery_swipe_enabled_) {
+        StartCameraPreview(100);
+    } else {
+        StopCameraPreview();
     }
 }
 
@@ -319,6 +539,7 @@ void UiLcdDisplay::ReturnToMainMenu() {
 
     gallery_swipe_enabled_ = false;
     StopCameraPreview();
+    ClearFeatureVisual();
     {
         DisplayLockGuard lock(this);
         lv_screen_load(menu_screen_);
@@ -328,6 +549,7 @@ void UiLcdDisplay::ReturnToMainMenu() {
 
 void UiLcdDisplay::ReturnToCameraScreen() {
     gallery_swipe_enabled_ = true;
+    ApplyFeatureVisual(kVisionOptionId);
     {
         DisplayLockGuard lock(this);
         lv_screen_load(ai_screen_);
@@ -631,9 +853,52 @@ void UiLcdDisplay::LoadRawImage(lv_obj_t* img_obj, const char* filepath) {
 
 void UiLcdDisplay::OnMenuButtonClicked(lv_event_t* e) {
     auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
+    if (target == nullptr) {
+        return;
+    }
+
     auto* data = static_cast<MenuButtonData*>(lv_obj_get_user_data(target));
-    if (data != nullptr && data->display != nullptr) {
-        data->display->OnMenuOptionClicked(data->option_id);
+    if (data == nullptr) {
+        return;
+    }
+
+    lv_indev_t* indev = lv_event_get_indev(e);
+    const lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_PRESSED) {
+        data->moved = false;
+        if (indev != nullptr) {
+            lv_indev_get_point(indev, &data->press_point);
+        }
+        return;
+    }
+
+    if (code == LV_EVENT_PRESSING) {
+        if (indev == nullptr || data->moved) {
+            return;
+        }
+
+        lv_point_t current_point;
+        lv_indev_get_point(indev, &current_point);
+        const int delta_x = current_point.x - data->press_point.x;
+        const int delta_y = current_point.y - data->press_point.y;
+        const int abs_delta_x = delta_x >= 0 ? delta_x : -delta_x;
+        const int abs_delta_y = delta_y >= 0 ? delta_y : -delta_y;
+        if (abs_delta_x >= kMenuSwipeThreshold && abs_delta_x > (abs_delta_y + 4)) {
+            data->moved = true;
+        }
+        return;
+    }
+
+    if (code == LV_EVENT_SHORT_CLICKED && !data->moved) {
+        if (data->display != nullptr) {
+            data->display->OnMenuOptionClicked(data->option_id);
+        }
+        return;
+    }
+
+    if (code == LV_EVENT_RELEASED) {
+        data->moved = false;
     }
 }
 

@@ -158,10 +158,6 @@ choice DISPLAY_STYLE
 
     config USE_WECHAT_MESSAGE_STYLE
         bool "Enable WeChat Message Style"
-
-    config USE_EMOTE_MESSAGE_STYLE
-        bool "Emote animation style"
-        depends on BOARD_TYPE_ESP_BOX_3 || BOARD_TYPE_ECHOEAR
 endchoice
 
 config USE_AFE_WAKE_WORD
