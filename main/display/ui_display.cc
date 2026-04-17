@@ -93,9 +93,9 @@ const char* UiLcdDisplay::GetMenuText(int option_id) const {
     case 10:
         return "魔镜美妆";
     case 11:
-        return "设置";
-    case 12:
         return "助眠音乐";
+    case 12:
+        return "设置";
     default:
         return "";
     }
@@ -124,9 +124,9 @@ const char* UiLcdDisplay::GetMenuIconAssetName(int option_id) const {
     case 10:
         return "menu_magic_mirror.png";
     case 11:
-        return "menu_settings.png";
-    case 12:
         return "menu_sleep_music.png";
+    case 12:
+        return "menu_settings.png";
     default:
         return nullptr;
     }
@@ -148,6 +148,7 @@ const char* UiLcdDisplay::GetFeatureBackgroundAssetName(int option_id) const {
         return nullptr;
     }
 }
+
 
 const lv_image_dsc_t* UiLcdDisplay::LoadAssetImage(const char* asset_name) {
     if (asset_name == nullptr || asset_name[0] == '\0') {
