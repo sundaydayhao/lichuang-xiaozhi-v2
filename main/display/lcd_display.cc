@@ -676,15 +676,19 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_flex_align(status_bar_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     emoji_box_ = lv_obj_create(content_);
-    lv_obj_set_size(emoji_box_, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_size(emoji_box_, LV_PCT(100), LV_PCT(100));
+    lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_clear_flag(emoji_box_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_opa(emoji_box_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_pad_all(emoji_box_, 0, 0);
     lv_obj_set_style_border_width(emoji_box_, 0, 0);
+    lv_obj_center(emoji_box_);
 
     emoji_label_ = lv_label_create(emoji_box_);
     lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
     lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
     lv_label_set_text(emoji_label_, FONT_AWESOME_MICROCHIP_AI);
+    lv_obj_center(emoji_label_);
 
     emoji_image_ = lv_img_create(emoji_box_);
     lv_obj_center(emoji_image_);
