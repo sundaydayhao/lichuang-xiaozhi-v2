@@ -651,6 +651,7 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_size(status_bar_, LV_HOR_RES, LV_SIZE_CONTENT);
     lv_obj_set_style_radius(status_bar_, 0, 0);
     lv_obj_set_style_bg_color(status_bar_, lvgl_theme->background_color(), 0);
+    lv_obj_set_style_bg_opa(status_bar_, LV_OPA_50, 0);
     lv_obj_set_style_text_color(status_bar_, lvgl_theme->text_color(), 0);
     lv_obj_set_flex_flow(status_bar_, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_top(status_bar_, lvgl_theme->spacing(2), 0);
@@ -669,6 +670,7 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_pad_all(content_, 0, 0);
     lv_obj_set_style_border_width(content_, 0, 0);
     lv_obj_set_style_bg_color(content_, lvgl_theme->chat_background_color(), 0);
+    lv_obj_set_style_bg_opa(content_, LV_OPA_TRANSP, 0);
 
     lv_obj_set_flex_flow(content_, LV_FLEX_FLOW_COLUMN); // 垂直布局（从上到下）
     lv_obj_set_flex_align(status_bar_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -889,6 +891,8 @@ void LcdDisplay::SetTheme(Theme* theme) {
     // Set background image
     if (lvgl_theme->background_image() != nullptr) {
         lv_obj_set_style_bg_image_src(container_, lvgl_theme->background_image()->image_dsc(), 0);
+        lv_obj_set_style_bg_image_tiled(container_, false, 0);
+        lv_obj_set_style_bg_image_opa(container_, LV_OPA_COVER, 0);
     } else {
         lv_obj_set_style_bg_image_src(container_, nullptr, 0);
         lv_obj_set_style_bg_color(container_, lvgl_theme->background_color(), 0);

@@ -23,8 +23,7 @@ namespace {
 
 const char* TAG = "CompactDisplay";
 constexpr int kStatusBarHeight = 27;
-constexpr int kMenuIconDisplaySize = 34;
-constexpr int kMenuIconCornerRadius = 10;
+constexpr int kMenuIconOriginalSize = 48;
 constexpr int kMenuSwipeThreshold = 14;
 constexpr int kMenuButtonHitPadding = 8;
 constexpr int kVisionOptionId = 4;
@@ -164,7 +163,7 @@ const lv_image_dsc_t* UiLcdDisplay::LoadAssetImage(const char* asset_name) {
             asset_image_cache_.erase(asset_name);
             return nullptr;
         }
-        image = CreateCachedRgb565Image(ptr, size);
+        image = CreateCachedDecodedImage(ptr, size);
         if (image == nullptr) {
             ESP_LOGE(TAG, "Failed to decode UI asset into PSRAM cache: %s", asset_name);
             asset_image_cache_.erase(asset_name);
@@ -197,13 +196,16 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     }
     preview_image_cached_.reset();
 
-    if (preview_image_ == nullptr || emoji_box_ == nullptr) {
+    if (feature_background_image_ == nullptr || emoji_box_ == nullptr) {
         return;
     }
 
     const lv_image_dsc_t* background = LoadAssetImage(GetFeatureBackgroundAssetName(option_id));
     if (background == nullptr) {
-        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+        if (preview_image_ != nullptr) {
+            lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+        }
         lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
         if (chat_message_label_ != nullptr) {
             lv_label_set_text(chat_message_label_, GetMenuText(option_id));
@@ -215,23 +217,12 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
         lv_label_set_text(chat_message_label_, "");
     }
 
-    const lv_coord_t available_w = LV_HOR_RES - 16;
-    const lv_coord_t available_h = LV_VER_RES - kStatusBarHeight - 16;
-    lv_coord_t zoom = 256;
-    if (background->header.w > 0 && background->header.h > 0) {
-        const lv_coord_t zoom_w = (available_w * 256) / background->header.w;
-        const lv_coord_t zoom_h = (available_h * 256) / background->header.h;
-        zoom = std::min(zoom_w, zoom_h);
-        if (zoom > 256) {
-            zoom = 256;
-        }
-    }
-
-    lv_image_set_src(preview_image_, background);
-    lv_image_set_scale(preview_image_, zoom);
-    lv_obj_center(preview_image_);
+    lv_image_set_src(feature_background_image_, background);
     lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    if (preview_image_ != nullptr) {
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_remove_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
 }
 
 void UiLcdDisplay::ClearFeatureVisual() {
@@ -243,6 +234,9 @@ void UiLcdDisplay::ClearFeatureVisual() {
     }
     preview_image_cached_.reset();
 
+    if (feature_background_image_ != nullptr) {
+        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    }
     if (preview_image_ != nullptr) {
         lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
     }
@@ -259,6 +253,16 @@ void UiLcdDisplay::InitializeMainMenu() {
 
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     ai_screen_ = lv_screen_active();
+
+    feature_background_image_ = lv_image_create(container_);
+    lv_obj_set_size(feature_background_image_, LV_HOR_RES, LV_VER_RES);
+    lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_image_set_inner_align(feature_background_image_, LV_IMAGE_ALIGN_STRETCH);
+    lv_obj_set_style_bg_opa(feature_background_image_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(feature_background_image_, 0, 0);
+    lv_obj_center(feature_background_image_);
+    lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_to_index(feature_background_image_, 0);
 
     lv_obj_add_event_cb(ai_screen_, OnAiScreenGesture, LV_EVENT_GESTURE, this);
     lv_obj_clear_flag(ai_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
@@ -326,29 +330,16 @@ void UiLcdDisplay::InitializeMainMenu() {
         lv_obj_add_flag(menu_buttons_[i], LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
         lv_obj_add_flag(menu_buttons_[i], LV_OBJ_FLAG_PRESS_LOCK);
 
-        lv_obj_t* icon_container = lv_obj_create(menu_buttons_[i]);
-        lv_obj_set_size(icon_container, kMenuIconDisplaySize, kMenuIconDisplaySize);
-        lv_obj_align(icon_container, LV_ALIGN_TOP_MID, 0, 0);
-        lv_obj_set_style_radius(icon_container, kMenuIconCornerRadius, 0);
-        lv_obj_set_style_clip_corner(icon_container, true, 0);
-        lv_obj_set_style_bg_opa(icon_container, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(icon_container, 0, 0);
-        lv_obj_set_style_pad_all(icon_container, 0, 0);
-        lv_obj_clear_flag(icon_container, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(icon_container, LV_OBJ_FLAG_EVENT_BUBBLE);
-
-        lv_obj_t* img = lv_image_create(icon_container);
+        lv_obj_t* img = lv_image_create(menu_buttons_[i]);
         menu_button_icon_images_[i] = img;
-        lv_obj_set_size(img, kMenuIconDisplaySize, kMenuIconDisplaySize);
-        lv_image_set_inner_align(img, LV_IMAGE_ALIGN_CONTAIN);
         lv_obj_add_flag(img, LV_OBJ_FLAG_EVENT_BUBBLE);
-        lv_obj_center(img);
+        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 0);
 
         menu_button_labels_[i] = lv_label_create(menu_buttons_[i]);
         lv_obj_set_width(menu_button_labels_[i], btn_size_w);
-        lv_obj_set_height(menu_button_labels_[i], btn_size_h - 38);
+        lv_obj_set_height(menu_button_labels_[i], btn_size_h - kMenuIconOriginalSize);
         lv_label_set_long_mode(menu_button_labels_[i], LV_LABEL_LONG_WRAP);
-        lv_obj_align(menu_button_labels_[i], LV_ALIGN_TOP_MID, 0, 38);
+        lv_obj_align(menu_button_labels_[i], LV_ALIGN_TOP_MID, 0, kMenuIconOriginalSize);
         lv_label_set_text(menu_button_labels_[i], GetMenuText(static_cast<int>(i) + 1));
         lv_obj_set_style_text_align(menu_button_labels_[i], LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_font(menu_button_labels_[i], lvgl_theme->text_font()->font(), 0);
@@ -398,8 +389,8 @@ void UiLcdDisplay::InitializeCameraScreen() {
     lv_obj_clear_flag(camera_bar, LV_OBJ_FLAG_SCROLLABLE);
 
     camera_mode_btn_left_ = lv_btn_create(camera_bar);
-    lv_obj_set_size(camera_mode_btn_left_, 44, 44);
-    lv_obj_set_style_radius(camera_mode_btn_left_, 22, 0);
+    lv_obj_set_size(camera_mode_btn_left_, kMenuIconOriginalSize, kMenuIconOriginalSize);
+    lv_obj_set_style_radius(camera_mode_btn_left_, kMenuIconOriginalSize / 2, 0);
     lv_obj_set_style_bg_opa(camera_mode_btn_left_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(camera_mode_btn_left_, 0, 0);
     lv_obj_align(camera_mode_btn_left_, LV_ALIGN_LEFT_MID, 40, 0);
@@ -421,8 +412,8 @@ void UiLcdDisplay::InitializeCameraScreen() {
     lv_obj_add_event_cb(camera_mode_btn_center_, OnCameraActionButtonClicked, LV_EVENT_CLICKED, nullptr);
 
     camera_mode_btn_right_ = lv_btn_create(camera_bar);
-    lv_obj_set_size(camera_mode_btn_right_, 44, 44);
-    lv_obj_set_style_radius(camera_mode_btn_right_, 22, 0);
+    lv_obj_set_size(camera_mode_btn_right_, kMenuIconOriginalSize, kMenuIconOriginalSize);
+    lv_obj_set_style_radius(camera_mode_btn_right_, kMenuIconOriginalSize / 2, 0);
     lv_obj_set_style_bg_opa(camera_mode_btn_right_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(camera_mode_btn_right_, 0, 0);
     lv_obj_align(camera_mode_btn_right_, LV_ALIGN_RIGHT_MID, -40, 0);

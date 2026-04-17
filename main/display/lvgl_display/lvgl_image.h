@@ -5,7 +5,7 @@
 
 void* AllocateImageBuffer(size_t size);
 void FreeImageBuffer(void* data);
-std::shared_ptr<class LvglImage> CreateCachedRgb565Image(void* data, size_t size);
+std::shared_ptr<class LvglImage> CreateCachedDecodedImage(void* data, size_t size);
 
 
 // Wrap around lv_img_dsc_t

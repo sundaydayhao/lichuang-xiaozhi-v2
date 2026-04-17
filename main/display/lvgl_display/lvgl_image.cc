@@ -19,115 +19,17 @@ bool IsJpeg(const uint8_t* data, size_t size) {
            data[2] == 0xFF;
 }
 
-uint8_t ScaleChannelByAlpha(uint8_t channel, uint8_t alpha) {
-    return static_cast<uint8_t>((static_cast<uint16_t>(channel) * alpha + 127U) / 255U);
-}
-
-uint16_t PackRgb565(uint8_t red, uint8_t green, uint8_t blue) {
-    return lv_color_to_u16(lv_color_make(red, green, blue));
-}
-
-bool ConvertDecodedDrawBufToRgb565(const lv_draw_buf_t* decoded, uint8_t* target) {
-    if (decoded == nullptr || target == nullptr || decoded->header.w == 0 || decoded->header.h == 0) {
-        return false;
+size_t GetDecodedBufferSize(const lv_draw_buf_t* decoded) {
+    if (decoded == nullptr || decoded->header.w == 0 || decoded->header.h == 0) {
+        return 0;
     }
 
-    const uint32_t width = decoded->header.w;
-    const uint32_t height = decoded->header.h;
-    const uint32_t src_stride = decoded->header.stride;
-    auto* dst_base = reinterpret_cast<uint16_t*>(target);
-
+    const size_t base_size = static_cast<size_t>(decoded->header.stride) * decoded->header.h;
     switch (decoded->header.cf) {
-    case LV_COLOR_FORMAT_RGB565: {
-        for (uint32_t y = 0; y < height; ++y) {
-            const auto* src = reinterpret_cast<const uint16_t*>(decoded->data + y * src_stride);
-            std::memcpy(dst_base + y * width, src, width * sizeof(uint16_t));
-        }
-        return true;
-    }
-    case LV_COLOR_FORMAT_RGB565_SWAPPED: {
-        for (uint32_t y = 0; y < height; ++y) {
-            const auto* src = reinterpret_cast<const uint16_t*>(decoded->data + y * src_stride);
-            auto* dst = dst_base + y * width;
-            for (uint32_t x = 0; x < width; ++x) {
-                dst[x] = static_cast<uint16_t>((src[x] << 8) | (src[x] >> 8));
-            }
-        }
-        return true;
-    }
-    case LV_COLOR_FORMAT_RGB565A8: {
-        const uint8_t* color_plane = decoded->data;
-        const uint8_t* alpha_plane = decoded->data + src_stride * height;
-        for (uint32_t y = 0; y < height; ++y) {
-            const auto* src = reinterpret_cast<const uint16_t*>(color_plane + y * src_stride);
-            const uint8_t* alpha = alpha_plane + y * width;
-            auto* dst = dst_base + y * width;
-            for (uint32_t x = 0; x < width; ++x) {
-                const uint16_t pixel = src[x];
-                const uint8_t a = alpha[x];
-                uint8_t red = static_cast<uint8_t>((((pixel >> 11) & 0x1F) * 255U + 15U) / 31U);
-                uint8_t green = static_cast<uint8_t>((((pixel >> 5) & 0x3F) * 255U + 31U) / 63U);
-                uint8_t blue = static_cast<uint8_t>(((pixel & 0x1F) * 255U + 15U) / 31U);
-                dst[x] = PackRgb565(ScaleChannelByAlpha(red, a),
-                                    ScaleChannelByAlpha(green, a),
-                                    ScaleChannelByAlpha(blue, a));
-            }
-        }
-        return true;
-    }
-    case LV_COLOR_FORMAT_RGB888: {
-        for (uint32_t y = 0; y < height; ++y) {
-            const uint8_t* src = decoded->data + y * src_stride;
-            auto* dst = dst_base + y * width;
-            for (uint32_t x = 0; x < width; ++x) {
-                const uint8_t blue = src[x * 3 + 0];
-                const uint8_t green = src[x * 3 + 1];
-                const uint8_t red = src[x * 3 + 2];
-                dst[x] = PackRgb565(red, green, blue);
-            }
-        }
-        return true;
-    }
-    case LV_COLOR_FORMAT_XRGB8888:
-    case LV_COLOR_FORMAT_ARGB8888:
-    case LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED: {
-        const bool has_alpha = decoded->header.cf != LV_COLOR_FORMAT_XRGB8888;
-        const bool premultiplied = decoded->header.cf == LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED;
-        for (uint32_t y = 0; y < height; ++y) {
-            const uint8_t* src = decoded->data + y * src_stride;
-            auto* dst = dst_base + y * width;
-            for (uint32_t x = 0; x < width; ++x) {
-                uint8_t blue = src[x * 4 + 0];
-                uint8_t green = src[x * 4 + 1];
-                uint8_t red = src[x * 4 + 2];
-                const uint8_t alpha = has_alpha ? src[x * 4 + 3] : 0xFF;
-
-                if (has_alpha && !premultiplied && alpha < 0xFF) {
-                    red = ScaleChannelByAlpha(red, alpha);
-                    green = ScaleChannelByAlpha(green, alpha);
-                    blue = ScaleChannelByAlpha(blue, alpha);
-                }
-
-                dst[x] = PackRgb565(red, green, blue);
-            }
-        }
-        return true;
-    }
-    case LV_COLOR_FORMAT_AL88: {
-        for (uint32_t y = 0; y < height; ++y) {
-            const uint8_t* src = decoded->data + y * src_stride;
-            auto* dst = dst_base + y * width;
-            for (uint32_t x = 0; x < width; ++x) {
-                const uint8_t lumi = src[x * 2 + 0];
-                const uint8_t alpha = src[x * 2 + 1];
-                const uint8_t value = ScaleChannelByAlpha(lumi, alpha);
-                dst[x] = PackRgb565(value, value, value);
-            }
-        }
-        return true;
-    }
+    case LV_COLOR_FORMAT_RGB565A8:
+        return base_size + static_cast<size_t>(decoded->header.w) * decoded->header.h;
     default:
-        return false;
+        return base_size;
     }
 }
 
@@ -149,7 +51,7 @@ void FreeImageBuffer(void* data) {
     }
 }
 
-std::shared_ptr<LvglImage> CreateCachedRgb565Image(void* data, size_t size) {
+std::shared_ptr<LvglImage> CreateCachedDecodedImage(void* data, size_t size) {
     if (data == nullptr || size == 0) {
         return nullptr;
     }
@@ -174,24 +76,20 @@ std::shared_ptr<LvglImage> CreateCachedRgb565Image(void* data, size_t size) {
         return std::make_shared<LvglRawImage>(data, size);
     }
 
-    const size_t rgb565_size = static_cast<size_t>(width) * height * sizeof(uint16_t);
-    auto* rgb565_data = static_cast<uint8_t*>(AllocateImageBuffer(rgb565_size));
-    if (rgb565_data == nullptr) {
+    const size_t decoded_size = GetDecodedBufferSize(decoder_dsc.decoded);
+    auto* decoded_data = static_cast<uint8_t*>(AllocateImageBuffer(decoded_size));
+    if (decoded_data == nullptr) {
         lv_image_decoder_close(&decoder_dsc);
         return std::make_shared<LvglRawImage>(data, size);
     }
 
-    const bool converted = ConvertDecodedDrawBufToRgb565(decoder_dsc.decoded, rgb565_data);
+    std::memcpy(decoded_data, decoder_dsc.decoded->data, decoded_size);
+    const int stride = static_cast<int>(decoder_dsc.decoded->header.stride);
+    const int color_format = static_cast<int>(decoder_dsc.decoded->header.cf);
     lv_image_decoder_close(&decoder_dsc);
-    if (!converted) {
-        FreeImageBuffer(rgb565_data);
-        return std::make_shared<LvglRawImage>(data, size);
-    }
-
-    return std::make_shared<LvglAllocatedImage>(rgb565_data, rgb565_size,
+    return std::make_shared<LvglAllocatedImage>(decoded_data, decoded_size,
                                                 static_cast<int>(width), static_cast<int>(height),
-                                                static_cast<int>(width * sizeof(uint16_t)),
-                                                LV_COLOR_FORMAT_RGB565);
+                                                stride, color_format);
 }
 
 LvglRawImage::LvglRawImage(void* data, size_t size) {

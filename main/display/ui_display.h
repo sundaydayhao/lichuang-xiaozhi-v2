@@ -35,6 +35,7 @@ private:
     };
 
     lv_obj_t* ai_screen_ = nullptr;
+    lv_obj_t* feature_background_image_ = nullptr;
     lv_obj_t* menu_screen_ = nullptr;
     lv_obj_t* menu_page_container_ = nullptr;
     lv_obj_t* menu_page1_ = nullptr;
