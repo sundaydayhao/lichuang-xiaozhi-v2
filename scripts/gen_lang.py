@@ -3,6 +3,8 @@ import argparse
 import json
 import os
 
+ALLOWED_LANGUAGES = {"zh-CN", "zh-TW", "en-US"}
+
 HEADER_TEMPLATE = """// Auto-generated language config
 // Language: {lang_code} with en-US fallback
 #pragma once
@@ -51,6 +53,10 @@ def get_sound_files(directory):
     return [f for f in os.listdir(directory) if f.endswith('.ogg')]
 
 def generate_header(lang_code, output_path):
+    if lang_code not in ALLOWED_LANGUAGES:
+        supported = ", ".join(sorted(ALLOWED_LANGUAGES))
+        raise ValueError(f"Unsupported language '{lang_code}'. Supported languages: {supported}")
+
     # 从输出路径推导项目结构
     # output_path 通常是 main/assets/lang_config.h
     main_dir = os.path.dirname(output_path)  # main/assets
@@ -175,7 +181,7 @@ def generate_header(lang_code, output_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate language configuration header file with en-US fallback")
-    parser.add_argument("--language", required=True, help="Language code (e.g: zh-CN, en-US, ja-JP)")
+    parser.add_argument("--language", required=True, help="Language code (zh-CN, zh-TW, en-US)")
     parser.add_argument("--output", required=True, help="Output header file path")
     args = parser.parse_args()
 

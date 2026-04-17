@@ -91,7 +91,7 @@ mkdir main/boards/my-custom-board
 
 ```json
 {
-    "target": "esp32s3",  // 目标芯片型号: esp32, esp32s3, esp32c3等
+    "target": "esp32s3",  // 目标芯片型号固定为 esp32s3
     "builds": [
         {
             "name": "my-custom-board",  // 开发板名称

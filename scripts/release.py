@@ -4,6 +4,10 @@ import json
 import zipfile
 import argparse
 
+SUPPORTED_BOARD_CONFIG = "CONFIG_BOARD_TYPE_BREAD_COMPACT_ML307CAMTOU"
+SUPPORTED_BOARD_TYPE = "bread-compact-ml307camtou"
+SUPPORTED_TARGET = "esp32s3"
+
 # 切换到项目根目录
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -51,19 +55,9 @@ def release_current():
     zip_bin(board_type, project_version)
 
 def get_all_board_types():
-    board_configs = {}
-    with open("main/CMakeLists.txt", encoding='utf-8') as f:
-        lines = f.readlines()
-        for i, line in enumerate(lines):
-            # 查找 if(CONFIG_BOARD_TYPE_*) 行
-            if "if(CONFIG_BOARD_TYPE_" in line:
-                config_name = line.strip().split("if(")[1].split(")")[0]
-                # 查找下一行的 set(BOARD_TYPE "xxx") 
-                next_line = lines[i + 1].strip()
-                if next_line.startswith("set(BOARD_TYPE"):
-                    board_type = next_line.split('"')[1]
-                    board_configs[config_name] = board_type
-    return board_configs
+    return {
+        SUPPORTED_BOARD_CONFIG: SUPPORTED_BOARD_TYPE,
+    }
 
 def release(board_type, board_config, config_filename="config.json"):
     config_path = f"main/boards/{board_type}/{config_filename}"
@@ -78,6 +72,8 @@ def release(board_type, board_config, config_filename="config.json"):
     with open(config_path, "r") as f:
         config = json.load(f)
     target = config["target"]
+    if target != SUPPORTED_TARGET:
+        raise ValueError(f"Only target {SUPPORTED_TARGET} is supported, got {target}")
     builds = config["builds"]
     
     for build in builds:

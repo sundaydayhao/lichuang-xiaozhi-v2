@@ -14,18 +14,9 @@ from requests.exceptions import RequestException
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def get_chip_id_string(chip_id):
-    return {
-        0x0000: "esp32",
-        0x0002: "esp32s2",
-        0x0005: "esp32c3",
-        0x0009: "esp32s3",
-        0x000C: "esp32c2",
-        0x000D: "esp32c6",
-        0x0010: "esp32h2",
-        0x0011: "esp32c5",
-        0x0012: "esp32p4",
-        0x0017: "esp32c5",
-    }[chip_id]
+    if chip_id != 0x0009:
+        raise Exception(f"Unsupported chip id: 0x{chip_id:04x}")
+    return "esp32s3"
 
 def get_flash_size(flash_size):
     MB = 1024 * 1024
