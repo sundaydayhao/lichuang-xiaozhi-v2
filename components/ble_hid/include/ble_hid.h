@@ -1,12 +1,15 @@
 #pragma once
 
+#include <driver/gpio.h>
+
+#if CONFIG_BT_ENABLED
 #include "esp_hidd_prf_api.h"
 #include "hid_dev.h"
 #include "hidd_le_prf_int.h"
 
 #include <esp_gap_ble_api.h>
 #include <esp_bt_defs.h>
-#include <driver/gpio.h>
+#endif
 
 #ifdef __cplusplus
 #include <functional>
@@ -34,10 +37,12 @@ public:
 private:
     BleHid() = default;
     ~BleHid() = default;
-    
+
+#if CONFIG_BT_ENABLED
     static void HiddEventCallback(esp_hidd_cb_event_t event, esp_hidd_cb_param_t *param);
     static void GapEventHandler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
-    
+#endif
+
     bool initialized_ = false;
     bool connected_ = false;
     bool sec_conn_ = false;

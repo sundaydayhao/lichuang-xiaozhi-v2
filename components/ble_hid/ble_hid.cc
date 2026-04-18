@@ -1,6 +1,8 @@
 #include "ble_hid.h"
 #include <esp_log.h>
-#include <esp_bt.h>
+
+#if CONFIG_BT_ENABLED
+#include "ble_hid_bt_compat.h"
 #include <esp_bt_main.h>
 #include <esp_bt_device.h>
 #include "hid_dev.h"
@@ -220,3 +222,40 @@ bool BleHid::SendPlayPause() {
     esp_hidd_send_consumer_value(hid_conn_id_, HID_CONSUMER_PLAY_PAUSE, false);
     return true;
 }
+#else
+
+#define TAG "BLE_HID"
+
+BleHid* BleHid::instance_ = nullptr;
+
+BleHid& BleHid::GetInstance() {
+    if (!instance_) {
+        instance_ = new BleHid();
+    }
+    return *instance_;
+}
+
+bool BleHid::Initialize() {
+    ESP_LOGI(TAG, "BLE HID disabled by sdkconfig");
+    return false;
+}
+
+void BleHid::Deinitialize() {
+    initialized_ = false;
+    connected_ = false;
+    sec_conn_ = false;
+}
+
+bool BleHid::SendVolumeUp() {
+    return false;
+}
+
+bool BleHid::SendVolumeDown() {
+    return false;
+}
+
+bool BleHid::SendPlayPause() {
+    return false;
+}
+
+#endif
