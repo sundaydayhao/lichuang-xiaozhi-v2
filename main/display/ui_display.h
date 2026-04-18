@@ -56,6 +56,7 @@ private:
 
     lv_obj_t* ai_screen_ = nullptr;
     lv_obj_t* ai_back_button_ = nullptr;
+    lv_obj_t* vision_ai_badge_ = nullptr;
     lv_obj_t* feature_background_image_ = nullptr;
     lv_obj_t* menu_screen_ = nullptr;
     lv_obj_t* menu_page_container_ = nullptr;
@@ -161,6 +162,7 @@ private:
     void ShowAiPrintResultImage(std::unique_ptr<LvglImage> image);
     void ApplyFeatureVisual(int option_id);
     void ClearFeatureVisual();
+    void UpdateVisionAiBadgeVisibility();
     void RefreshMenuIconImages();
     const char* GetSettingsTitle() const;
     const char* GetSettingsItemName(int index) const;

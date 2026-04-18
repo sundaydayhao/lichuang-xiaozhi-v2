@@ -295,6 +295,7 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
         esp_timer_stop(preview_timer_);
     }
     preview_image_cached_.reset();
+    UpdateVisionAiBadgeVisibility();
 
     if (feature_background_image_ == nullptr || emoji_box_ == nullptr) {
         return;
@@ -335,6 +336,7 @@ void UiLcdDisplay::ClearFeatureVisual() {
         esp_timer_stop(preview_timer_);
     }
     preview_image_cached_.reset();
+    UpdateVisionAiBadgeVisibility();
 
     if (feature_background_image_ != nullptr) {
         lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
@@ -366,6 +368,33 @@ void UiLcdDisplay::InitializeMainMenu() {
     lv_obj_center(feature_background_image_);
     lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_to_index(feature_background_image_, 0);
+
+    vision_ai_badge_ = lv_obj_create(ai_screen_);
+    lv_obj_set_size(vision_ai_badge_, 42, 42);
+    lv_obj_align(vision_ai_badge_, LV_ALIGN_BOTTOM_LEFT, 12, -14);
+    lv_obj_add_flag(vision_ai_badge_, LV_OBJ_FLAG_FLOATING);
+    lv_obj_add_flag(vision_ai_badge_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_clear_flag(vision_ai_badge_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(vision_ai_badge_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(vision_ai_badge_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_radius(vision_ai_badge_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(vision_ai_badge_, lv_color_hex(0x111111), 0);
+    lv_obj_set_style_bg_opa(vision_ai_badge_, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(vision_ai_badge_, 1, 0);
+    lv_obj_set_style_border_color(vision_ai_badge_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(vision_ai_badge_, LV_OPA_30, 0);
+    lv_obj_set_style_pad_all(vision_ai_badge_, 0, 0);
+    lv_obj_set_style_shadow_width(vision_ai_badge_, 12, 0);
+    lv_obj_set_style_shadow_color(vision_ai_badge_, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_shadow_opa(vision_ai_badge_, LV_OPA_20, 0);
+    lv_obj_add_flag(vision_ai_badge_, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* vision_ai_badge_label = lv_label_create(vision_ai_badge_);
+    lv_label_set_text(vision_ai_badge_label, "Ai");
+    lv_obj_center(vision_ai_badge_label);
+    lv_obj_set_style_text_font(vision_ai_badge_label, lvgl_theme->text_font()->font(), 0);
+    lv_obj_set_style_text_color(vision_ai_badge_label, lv_color_white(), 0);
+    lv_obj_set_style_text_letter_space(vision_ai_badge_label, 1, 0);
 
     lv_obj_add_event_cb(ai_screen_, OnAiScreenGesture, LV_EVENT_GESTURE, this);
     lv_obj_clear_flag(ai_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
@@ -459,7 +488,21 @@ void UiLcdDisplay::InitializeMainMenu() {
     InitializeAlarmPanel();
     ai_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
     ai_back_button_ = CreateBackButton(ai_screen_, &ai_back_button_data_);
+    UpdateVisionAiBadgeVisibility();
     lv_screen_load(menu_screen_);
+}
+
+void UiLcdDisplay::UpdateVisionAiBadgeVisibility() {
+    if (vision_ai_badge_ == nullptr) {
+        return;
+    }
+
+    if (current_feature_option_id_ == kVisionOptionId) {
+        lv_obj_remove_flag(vision_ai_badge_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(vision_ai_badge_);
+    } else {
+        lv_obj_add_flag(vision_ai_badge_, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 void UiLcdDisplay::InitializeCameraScreen() {
@@ -760,18 +803,16 @@ lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, BackButtonData* data,
     lv_obj_set_size(back_btn, 60, 40);
     lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, -18, 34);
     lv_obj_set_style_radius(back_btn, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(back_btn, dark_surface ? 0 : 1, 0);
-    lv_obj_set_style_border_color(back_btn, lv_color_hex(0xD4E2F0), 0);
+    lv_obj_set_style_border_width(back_btn, 1, 0);
+    lv_obj_set_style_border_color(back_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_pad_all(back_btn, 0, 0);
     lv_obj_set_style_shadow_width(back_btn, dark_surface ? 0 : 16, 0);
     lv_obj_set_style_shadow_opa(back_btn, dark_surface ? LV_OPA_0 : LV_OPA_20, 0);
-    lv_obj_set_style_shadow_color(back_btn, lv_color_hex(0x9DB6D4), 0);
-    lv_obj_set_style_bg_color(back_btn,
-                              dark_surface ? lv_color_hex(0x1C2430) : lv_color_hex(0xEEF5FC), 0);
-    lv_obj_set_style_bg_opa(back_btn, dark_surface ? LV_OPA_70 : LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(
-        back_btn, dark_surface ? lv_color_hex(0x111822) : lv_color_hex(0xDCEAF9), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(back_btn, dark_surface ? LV_OPA_80 : LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_color(back_btn, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1C2430), 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_70, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x111822), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_80, LV_STATE_PRESSED);
     lv_obj_add_flag(back_btn, LV_OBJ_FLAG_FLOATING);
     lv_obj_set_user_data(back_btn, data);
     lv_obj_add_event_cb(back_btn, OnBackButtonClicked, LV_EVENT_CLICKED, nullptr);
@@ -780,7 +821,7 @@ lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, BackButtonData* data,
     lv_label_set_text(label, "<");
     lv_obj_align(label, LV_ALIGN_CENTER, 6, -1);
     lv_obj_set_style_text_font(label, lvgl_theme->text_font()->font(), 0);
-    lv_obj_set_style_text_color(label, dark_surface ? lv_color_white() : lv_color_hex(0x335F8A), 0);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
     lv_obj_set_style_text_letter_space(label, 0, 0);
 
     lv_obj_move_foreground(back_btn);
