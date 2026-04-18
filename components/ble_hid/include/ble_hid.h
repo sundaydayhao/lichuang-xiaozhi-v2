@@ -1,55 +1,68 @@
 #pragma once
 
-#include <driver/gpio.h>
-
-#if CONFIG_BT_ENABLED
-#include "esp_hidd_prf_api.h"
-#include "hid_dev.h"
-#include "hidd_le_prf_int.h"
-
-#include <esp_gap_ble_api.h>
-#include <esp_bt_defs.h>
-#endif
-
 #ifdef __cplusplus
+
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+
+#include <esp_event.h>
+
+struct esp_hidd_dev_s;
+typedef struct esp_hidd_dev_s esp_hidd_dev_t;
 
 class BleHid {
 public:
     static BleHid& GetInstance();
-    
+
     bool Initialize();
     void Deinitialize();
-    
-    // 发送音量控制
+
     bool SendVolumeUp();
     bool SendVolumeDown();
     bool SendPlayPause();
-    
-    // 连接状态
-    bool IsConnected() const { return connected_; }
-    
-    // 连接状态变化回调
+
+    bool SendArrowUp();
+    bool SendArrowDown();
+    bool SendArrowLeft();
+    bool SendArrowRight();
+
+    bool IsConnected() const { return connected_ && sec_conn_; }
+
     void OnConnectionStateChanged(std::function<void(bool connected)> callback) {
         connection_state_callback_ = callback;
     }
-    
+
 private:
     BleHid() = default;
     ~BleHid() = default;
 
-#if CONFIG_BT_ENABLED
-    static void HiddEventCallback(esp_hidd_cb_event_t event, esp_hidd_cb_param_t *param);
-    static void GapEventHandler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
-#endif
+    static void HiddEventCallback(void* handler_arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+
+    void NotifyConnectionStateChanged(bool connected);
+    void HandleConnected();
+    void HandleDisconnected();
+
+    bool InitializeImpl();
+    void DeinitializeImpl();
+    bool InitializeNimble();
+    void DeinitializeNimble();
+    bool ConfigureAdvertising();
+    bool StartAdvertising();
+
+    bool SendInputReport(uint8_t report_id, uint8_t* data, size_t length);
+    bool SendConsumerUsage(uint16_t usage);
+    bool SendKeyboardUsage(uint8_t keycode);
 
     bool initialized_ = false;
     bool connected_ = false;
     bool sec_conn_ = false;
-    uint16_t hid_conn_id_ = 0;
+    bool nimble_initialized_ = false;
+    bool host_task_started_ = false;
     std::function<void(bool connected)> connection_state_callback_ = nullptr;
-    
+    esp_hidd_dev_t* hid_dev_ = nullptr;
+
     static BleHid* instance_;
 };
 
-#endif // __cplusplus
+#endif  // __cplusplus
