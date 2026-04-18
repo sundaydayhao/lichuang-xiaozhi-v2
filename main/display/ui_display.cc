@@ -303,6 +303,11 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     preview_image_cached_.reset();
     UpdateVisionAiBadgeVisibility();
 
+    if (chat_message_label_ != nullptr) {
+        lv_obj_clear_flag(chat_message_label_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(chat_message_label_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
+
     if (feature_background_image_ == nullptr || emoji_box_ == nullptr) {
         return;
     }
@@ -343,6 +348,11 @@ void UiLcdDisplay::ClearFeatureVisual() {
     }
     preview_image_cached_.reset();
     UpdateVisionAiBadgeVisibility();
+
+    if (chat_message_label_ != nullptr) {
+        lv_obj_clear_flag(chat_message_label_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(chat_message_label_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
 
     if (feature_background_image_ != nullptr) {
         lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);

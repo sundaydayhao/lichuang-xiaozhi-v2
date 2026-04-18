@@ -38,7 +38,6 @@ constexpr size_t kAiPrintJpegWorkBufferSize = 16 * 1024;
 constexpr uint32_t kAiPrintTaskStackSize = 12 * 1024;
 constexpr UBaseType_t kAiPrintTaskPriority = 3;
 constexpr int kAiPrintOptionId = 7;
-
 struct AiPrintTaskContext {
     UiLcdDisplay* display = nullptr;
     std::string prompt;
@@ -83,6 +82,27 @@ std::string BuildHttpError(const char* action, int status_code, const std::strin
         message += body;
     }
     return message;
+}
+
+void AlignAiPrintMessageBelowEmoji(lv_obj_t* message_label, lv_obj_t* emoji_label,
+                                   lv_obj_t* emoji_image) {
+    if (message_label == nullptr) {
+        return;
+    }
+
+    lv_obj_t* anchor = emoji_label;
+    if (emoji_image != nullptr && !lv_obj_has_flag(emoji_image, LV_OBJ_FLAG_HIDDEN)) {
+        anchor = emoji_image;
+    }
+
+    lv_obj_add_flag(message_label, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_clear_flag(message_label, LV_OBJ_FLAG_HIDDEN);
+    if (anchor != nullptr) {
+        lv_obj_align_to(message_label, anchor, LV_ALIGN_OUT_BOTTOM_MID, 0, 18);
+    } else {
+        lv_obj_align(message_label, LV_ALIGN_CENTER, 0, 72);
+    }
+    lv_obj_move_foreground(message_label);
 }
 
 bool RequestPromptId(NetworkInterface* network, const std::string& prompt,
@@ -318,6 +338,7 @@ void UiLcdDisplay::ShowAiPrintListeningState() {
     }
     if (chat_message_label_ != nullptr) {
         lv_label_set_text(chat_message_label_, "请直接说出你想画的内容\n例如：画一只戴围巾的大熊猫");
+        AlignAiPrintMessageBelowEmoji(chat_message_label_, emoji_label_, emoji_image_);
     }
 }
 
