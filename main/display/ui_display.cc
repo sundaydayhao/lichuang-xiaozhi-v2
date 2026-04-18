@@ -164,6 +164,36 @@ UiLcdDisplay::~UiLcdDisplay() {
     BleHid::GetInstance().OnConnectionStateChanged({});
 }
 
+void UiLcdDisplay::SetEmotion(const char* emotion) {
+    if (current_dialogue_scene_option_id_ == kMagicMirrorOptionId) {
+        return;
+    }
+
+    SpiLcdDisplay::SetEmotion(emotion);
+}
+
+void UiLcdDisplay::SetChatMessage(const char* role, const char* content) {
+    if (content != nullptr && content[0] != '\0') {
+        if (current_dialogue_scene_option_id_ == kMagicMirrorOptionId) {
+            SwitchMagicMirrorToChatMode();
+        }
+        if (current_dialogue_scene_option_id_ == kEncyclopediaOptionId &&
+            role != nullptr && strcmp(role, "user") == 0) {
+            MarkDialogueScenePromptCaptured();
+        }
+    }
+
+    SpiLcdDisplay::SetChatMessage(role, content);
+}
+
+void UiLcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
+    if (image != nullptr && current_dialogue_scene_option_id_ == kMagicMirrorOptionId) {
+        SwitchMagicMirrorToChatMode();
+    }
+
+    SpiLcdDisplay::SetPreviewImage(std::move(image));
+}
+
 void UiLcdDisplay::SetCameraPreviewCallback(std::function<void()> callback) {
     camera_preview_callback_ = std::move(callback);
 }
@@ -518,6 +548,7 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
 
 void UiLcdDisplay::ClearFeatureVisual() {
     current_feature_option_id_ = 0;
+    magic_mirror_chat_started_ = false;
     suppress_emotion_display_ = false;
 
     DisplayLockGuard lock(this);
@@ -549,6 +580,9 @@ void UiLcdDisplay::ClearFeatureVisual() {
         lv_label_set_text(feature_overlay_label_, "");
         lv_obj_add_flag(feature_overlay_label_, LV_OBJ_FLAG_HIDDEN);
     }
+    if (magic_mirror_intro_container_ != nullptr) {
+        lv_obj_add_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 void UiLcdDisplay::HideAiPrintMessageLabel() {
@@ -559,6 +593,97 @@ void UiLcdDisplay::HideAiPrintMessageLabel() {
 
     lv_label_set_text(label, "");
     lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+}
+
+void UiLcdDisplay::InitializeMagicMirrorIntro() {
+    if (ai_screen_ == nullptr || magic_mirror_intro_container_ != nullptr) {
+        return;
+    }
+
+    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
+
+    magic_mirror_intro_container_ = lv_obj_create(ai_screen_);
+    lv_obj_set_size(magic_mirror_intro_container_, LV_HOR_RES, LV_SIZE_CONTENT);
+    lv_obj_align(magic_mirror_intro_container_, LV_ALIGN_CENTER, 0, 14);
+    lv_obj_add_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_FLOATING);
+    lv_obj_add_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_clear_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_scrollbar_mode(magic_mirror_intro_container_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_bg_opa(magic_mirror_intro_container_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(magic_mirror_intro_container_, 0, 0);
+    lv_obj_set_style_pad_all(magic_mirror_intro_container_, 0, 0);
+    lv_obj_set_style_pad_row(magic_mirror_intro_container_, 12, 0);
+    lv_obj_set_flex_flow(magic_mirror_intro_container_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(magic_mirror_intro_container_,
+                          LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    magic_mirror_intro_emoji_ = lv_image_create(magic_mirror_intro_container_);
+    if (auto emojis = lvgl_theme->emoji_collection(); emojis != nullptr) {
+        if (const LvglImage* emoji = emojis->GetEmojiImage("loving"); emoji != nullptr) {
+            lv_image_set_src(magic_mirror_intro_emoji_, emoji->image_dsc());
+        }
+    }
+
+    magic_mirror_intro_text_ = lv_label_create(magic_mirror_intro_container_);
+    lv_obj_set_width(magic_mirror_intro_text_, std::min(width_ - 48, 220));
+    lv_label_set_long_mode(magic_mirror_intro_text_, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(magic_mirror_intro_text_,
+                      "打开摄像头后可根据镜头内的人脸妆容提出建议、赞美");
+    lv_obj_set_style_text_align(magic_mirror_intro_text_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(magic_mirror_intro_text_, lvgl_theme->text_font()->font(), 0);
+    lv_obj_set_style_text_color(magic_mirror_intro_text_, lv_color_hex(0x2B2B2B), 0);
+    lv_obj_set_style_bg_color(magic_mirror_intro_text_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(magic_mirror_intro_text_, LV_OPA_90, 0);
+    lv_obj_set_style_radius(magic_mirror_intro_text_, 16, 0);
+    lv_obj_set_style_pad_hor(magic_mirror_intro_text_, 14, 0);
+    lv_obj_set_style_pad_ver(magic_mirror_intro_text_, 10, 0);
+    lv_obj_set_style_border_width(magic_mirror_intro_text_, 0, 0);
+    lv_obj_set_style_shadow_width(magic_mirror_intro_text_, 14, 0);
+    lv_obj_set_style_shadow_color(magic_mirror_intro_text_, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_shadow_opa(magic_mirror_intro_text_, LV_OPA_10, 0);
+
+    lv_obj_add_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_HIDDEN);
+}
+
+void UiLcdDisplay::ShowMagicMirrorIntro() {
+    DisplayLockGuard lock(this);
+    InitializeMagicMirrorIntro();
+    if (magic_mirror_intro_container_ == nullptr) {
+        return;
+    }
+
+    if (gif_controller_) {
+        gif_controller_->Stop();
+        gif_controller_.reset();
+    }
+    if (emoji_image_ != nullptr) {
+        lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (emoji_label_ != nullptr) {
+        lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    lv_obj_remove_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(magic_mirror_intro_container_);
+}
+
+void UiLcdDisplay::HideMagicMirrorIntro() {
+    DisplayLockGuard lock(this);
+    if (magic_mirror_intro_container_ != nullptr) {
+        lv_obj_add_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void UiLcdDisplay::SwitchMagicMirrorToChatMode() {
+    if (magic_mirror_chat_started_) {
+        return;
+    }
+
+    magic_mirror_chat_started_ = true;
+    HideMagicMirrorIntro();
 }
 
 void UiLcdDisplay::SetDialogueSceneOverlayText(const char* text) {
@@ -646,6 +771,7 @@ void UiLcdDisplay::UpdateDialogueScenePrompt() {
 void UiLcdDisplay::ExitDialogueScene(bool exit_chat_session) {
     const bool was_active = current_dialogue_scene_option_id_ != 0;
     current_dialogue_scene_option_id_ = 0;
+    magic_mirror_chat_started_ = false;
     dialogue_scene_deadline_us_ = 0;
     dialogue_scene_prompt_captured_ = false;
 
@@ -653,6 +779,7 @@ void UiLcdDisplay::ExitDialogueScene(bool exit_chat_session) {
         esp_timer_stop(dialogue_scene_timer_);
     }
     SetDialogueSceneOverlayText("");
+    HideMagicMirrorIntro();
 
     if (!was_active) {
         return;
@@ -666,6 +793,7 @@ void UiLcdDisplay::ExitDialogueScene(bool exit_chat_session) {
 
 void UiLcdDisplay::EnterDialogueScene(int option_id) {
     current_dialogue_scene_option_id_ = option_id;
+    magic_mirror_chat_started_ = false;
     dialogue_scene_prompt_captured_ = false;
     dialogue_scene_deadline_us_ = 0;
 
@@ -690,6 +818,12 @@ void UiLcdDisplay::EnterDialogueScene(int option_id) {
         }
     } else {
         SetDialogueSceneOverlayText("");
+    }
+
+    if (option_id == kMagicMirrorOptionId) {
+        ShowMagicMirrorIntro();
+    } else {
+        HideMagicMirrorIntro();
     }
 
     Application::GetInstance().ToggleChatState();
@@ -756,6 +890,7 @@ void UiLcdDisplay::InitializeMainMenu() {
 
     lv_obj_add_event_cb(ai_screen_, OnAiScreenGesture, LV_EVENT_GESTURE, this);
     lv_obj_clear_flag(ai_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    InitializeMagicMirrorIntro();
 
     menu_screen_ = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(menu_screen_, lvgl_theme->background_color(), 0);

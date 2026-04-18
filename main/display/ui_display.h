@@ -26,6 +26,9 @@ public:
                  bool mirror_x, bool mirror_y, bool swap_xy);
     ~UiLcdDisplay() override;
 
+    void SetEmotion(const char* emotion) override;
+    void SetChatMessage(const char* role, const char* content) override;
+    void SetPreviewImage(std::unique_ptr<LvglImage> image) override;
     void SetCameraPreviewCallback(std::function<void()> callback);
     bool HandleFeatureSpeechRecognized(const std::string& text);
     bool IsAiPrintActive() const;
@@ -114,6 +117,9 @@ private:
     lv_obj_t* vision_ai_badge_ = nullptr;
     lv_obj_t* feature_background_image_ = nullptr;
     lv_obj_t* feature_overlay_label_ = nullptr;
+    lv_obj_t* magic_mirror_intro_container_ = nullptr;
+    lv_obj_t* magic_mirror_intro_emoji_ = nullptr;
+    lv_obj_t* magic_mirror_intro_text_ = nullptr;
     lv_obj_t* ai_print_message_label_ = nullptr;
     lv_obj_t* menu_screen_ = nullptr;
     lv_obj_t* menu_page_container_ = nullptr;
@@ -189,6 +195,7 @@ private:
     std::atomic<bool> ai_print_generation_running_ = false;
     bool remote_selfie_audio_suspended_ = false;
     int current_dialogue_scene_option_id_ = 0;
+    bool magic_mirror_chat_started_ = false;
     int64_t dialogue_scene_deadline_us_ = 0;
     bool dialogue_scene_prompt_captured_ = false;
     esp_timer_handle_t dialogue_scene_timer_ = nullptr;
@@ -266,6 +273,10 @@ private:
     void ShowAiPrintErrorState(const std::string& message);
     void ShowAiPrintResultImage(std::unique_ptr<LvglImage> image);
     void HideAiPrintMessageLabel();
+    void InitializeMagicMirrorIntro();
+    void ShowMagicMirrorIntro();
+    void HideMagicMirrorIntro();
+    void SwitchMagicMirrorToChatMode();
     void ShowWordDictationTextbookScreen();
     void ShowWordDictationStageScreen();
     void ShowWordDictationWordScreen();
