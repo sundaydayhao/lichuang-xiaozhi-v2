@@ -252,6 +252,7 @@ bool UiLcdDisplay::IsDialogueSceneOption(int option_id) const {
     case kEncyclopediaOptionId:
     case kOralPracticeOptionId:
     case kBedtimeStoryOptionId:
+    case kAiPrintOptionId:
     case kFaceReadingOptionId:
     case kMagicMirrorOptionId:
         return true;
@@ -296,6 +297,18 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
             "Tell warm, calming, age-appropriate bedtime stories and keep the tone gentle. "
             "You may ask one short follow-up question about theme, character, or length. "
             "Keep stories suitable for listening aloud.";
+        break;
+    case kAiPrintOptionId:
+        scene = "ai_print";
+        mode = "photo_print_assistant";
+        instructions =
+            "You are an AI photo print assistant for children. "
+            "Always reply in the current reply_language. "
+            "First help the user choose a style such as 动漫, 卡通, 手绘, or 黑白线稿. "
+            "When the user wants to use the camera, call self.camera.take_photo. "
+            "After seeing the photo, describe how it would look in the chosen style. "
+            "If real printing hardware is unavailable, clearly say that only style "
+            "planning and preview advice are available.";
         break;
     case kFaceReadingOptionId:
         scene = "fortune";
@@ -462,6 +475,7 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     }
     preview_image_cached_.reset();
     UpdateVisionAiBadgeVisibility();
+    HideAiPrintMessageLabel();
 
     lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
     if (chat_label != nullptr) {
@@ -512,6 +526,7 @@ void UiLcdDisplay::ClearFeatureVisual() {
     }
     preview_image_cached_.reset();
     UpdateVisionAiBadgeVisibility();
+    HideAiPrintMessageLabel();
 
     lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
     if (chat_label != nullptr) {
@@ -534,6 +549,16 @@ void UiLcdDisplay::ClearFeatureVisual() {
         lv_label_set_text(feature_overlay_label_, "");
         lv_obj_add_flag(feature_overlay_label_, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+void UiLcdDisplay::HideAiPrintMessageLabel() {
+    lv_obj_t* label = TakeValidObject(ai_print_message_label_);
+    if (label == nullptr) {
+        return;
+    }
+
+    lv_label_set_text(label, "");
+    lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
 }
 
 void UiLcdDisplay::SetDialogueSceneOverlayText(const char* text) {
@@ -645,7 +670,12 @@ void UiLcdDisplay::EnterDialogueScene(int option_id) {
     dialogue_scene_deadline_us_ = 0;
 
     ClearAiSceneMessages();
-    ApplyFeatureVisual(option_id);
+    if (option_id == kAiPrintOptionId) {
+        ApplyFeatureVisual(option_id);
+        ShowAiPrintListeningState();
+    } else {
+        ApplyFeatureVisual(option_id);
+    }
 
     const std::string payload = BuildDialogueScenePayload(option_id);
     Application::GetInstance().SetSceneContextPayload(payload);

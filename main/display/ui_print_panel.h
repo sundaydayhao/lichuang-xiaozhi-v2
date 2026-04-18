@@ -1,6 +1,8 @@
 #ifndef UI_PRINT_PANEL_H
 #define UI_PRINT_PANEL_H
 
+#include <lvgl.h>
+
 #include <string>
 
 class UiLcdDisplay;
@@ -8,6 +10,8 @@ class UiLcdDisplay;
 class UiPrintPanel {
 public:
     static bool HandleSpeechRecognized(UiLcdDisplay& display, const std::string& text);
+    static lv_obj_t* EnsureMessageLabel(UiLcdDisplay& display);
+    static void SetMessageLabel(UiLcdDisplay& display, const char* text);
 
 private:
     static std::string BuildPrompt(const std::string& text);

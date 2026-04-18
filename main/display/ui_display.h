@@ -114,6 +114,7 @@ private:
     lv_obj_t* vision_ai_badge_ = nullptr;
     lv_obj_t* feature_background_image_ = nullptr;
     lv_obj_t* feature_overlay_label_ = nullptr;
+    lv_obj_t* ai_print_message_label_ = nullptr;
     lv_obj_t* menu_screen_ = nullptr;
     lv_obj_t* menu_page_container_ = nullptr;
     lv_obj_t* menu_page1_ = nullptr;
@@ -264,6 +265,7 @@ private:
     void ShowAiPrintGeneratingState();
     void ShowAiPrintErrorState(const std::string& message);
     void ShowAiPrintResultImage(std::unique_ptr<LvglImage> image);
+    void HideAiPrintMessageLabel();
     void ShowWordDictationTextbookScreen();
     void ShowWordDictationStageScreen();
     void ShowWordDictationWordScreen();

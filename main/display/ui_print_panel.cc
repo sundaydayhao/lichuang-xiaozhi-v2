@@ -3,6 +3,7 @@
 #include "application.h"
 #include "board.h"
 #include "lvgl_display/lvgl_image.h"
+#include "lvgl_theme.h"
 #include "ui_display.h"
 
 #include <cJSON.h>
@@ -320,6 +321,48 @@ bool UiLcdDisplay::HandleFeatureSpeechRecognized(const std::string& text) {
     return UiPrintPanel::HandleSpeechRecognized(*this, text);
 }
 
+lv_obj_t* UiPrintPanel::EnsureMessageLabel(UiLcdDisplay& display) {
+    if (display.ai_print_message_label_ != nullptr &&
+        lv_obj_is_valid(display.ai_print_message_label_)) {
+        return display.ai_print_message_label_;
+    }
+
+    lv_obj_t* parent = display.ai_screen_ != nullptr ? display.ai_screen_ : display.content_;
+    if (parent == nullptr) {
+        return nullptr;
+    }
+
+    auto* label = lv_label_create(parent);
+    lv_obj_set_width(label, display.width_ * 9 / 10);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(
+        label, static_cast<LvglTheme*>(display.GetTheme())->text_color(), 0);
+    lv_obj_add_flag(label, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_add_flag(label, LV_OBJ_FLAG_FLOATING);
+    lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_label_set_text(label, "");
+    lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+    display.ai_print_message_label_ = label;
+    return label;
+}
+
+void UiPrintPanel::SetMessageLabel(UiLcdDisplay& display, const char* text) {
+    lv_obj_t* label = EnsureMessageLabel(display);
+    if (label == nullptr) {
+        return;
+    }
+
+    if (text == nullptr || text[0] == '\0') {
+        lv_label_set_text(label, "");
+        lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_label_set_text(label, text);
+    AlignAiPrintMessageBelowEmoji(label, display.emoji_label_, display.emoji_image_);
+}
+
 void UiLcdDisplay::ShowAiPrintListeningState() {
     DisplayLockGuard lock(this);
     if (preview_timer_ != nullptr) {
@@ -337,10 +380,10 @@ void UiLcdDisplay::ShowAiPrintListeningState() {
     if (emoji_box_ != nullptr) {
         lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, "请直接说出你想画的内容\n例如：画一只戴围巾的大熊猫");
-        AlignAiPrintMessageBelowEmoji(chat_message_label_, emoji_label_, emoji_image_);
+    if (chat_message_label_ != nullptr && lv_obj_is_valid(chat_message_label_)) {
+        lv_label_set_text(chat_message_label_, "");
     }
+    UiPrintPanel::SetMessageLabel(*this, "请直接说你想要画的内容\n例如：使用线条风格画一只带围巾的大熊猫");
 }
 
 void UiLcdDisplay::ShowAiPrintGeneratingState() {
@@ -360,9 +403,10 @@ void UiLcdDisplay::ShowAiPrintGeneratingState() {
     if (emoji_box_ != nullptr) {
         lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, "正在生成图片\n请稍候...");
+    if (chat_message_label_ != nullptr && lv_obj_is_valid(chat_message_label_)) {
+        lv_label_set_text(chat_message_label_, "");
     }
+    UiPrintPanel::SetMessageLabel(*this, "正在生成图片，请稍候...");
 }
 
 void UiLcdDisplay::ShowAiPrintErrorState(const std::string& message) {
@@ -382,9 +426,10 @@ void UiLcdDisplay::ShowAiPrintErrorState(const std::string& message) {
     if (emoji_box_ != nullptr) {
         lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, message.c_str());
+    if (chat_message_label_ != nullptr && lv_obj_is_valid(chat_message_label_)) {
+        lv_label_set_text(chat_message_label_, "");
     }
+    UiPrintPanel::SetMessageLabel(*this, message.c_str());
 }
 
 void UiLcdDisplay::ShowAiPrintResultImage(std::unique_ptr<LvglImage> image) {
@@ -406,8 +451,8 @@ void UiLcdDisplay::ShowAiPrintResultImage(std::unique_ptr<LvglImage> image) {
     auto img_dsc = preview_image_cached_->image_dsc();
     lv_image_set_src(preview_image_, img_dsc);
 
-    const lv_coord_t max_width = width_ - 24;
-    const lv_coord_t max_height = height_ - 27 - 28;
+    const lv_coord_t max_width = width_;
+    const lv_coord_t max_height = height_ - 27;
     lv_coord_t scale = 256;
     if (img_dsc->header.w > 0 && img_dsc->header.h > 0) {
         const lv_coord_t scale_w = (max_width * 256) / img_dsc->header.w;
@@ -423,7 +468,7 @@ void UiLcdDisplay::ShowAiPrintResultImage(std::unique_ptr<LvglImage> image) {
 
     lv_image_set_scale(preview_image_, scale);
     lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_align(preview_image_, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_align(preview_image_, LV_ALIGN_CENTER, 0, 0);
     lv_obj_remove_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
 
     if (feature_background_image_ != nullptr) {
@@ -432,7 +477,8 @@ void UiLcdDisplay::ShowAiPrintResultImage(std::unique_ptr<LvglImage> image) {
     if (emoji_box_ != nullptr) {
         lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (chat_message_label_ != nullptr) {
+    HideAiPrintMessageLabel();
+    if (chat_message_label_ != nullptr && lv_obj_is_valid(chat_message_label_)) {
         lv_label_set_text(chat_message_label_, "");
     }
 }
@@ -598,5 +644,8 @@ void UiPrintPanel::RunTask(UiLcdDisplay& display, const std::string& prompt) {
         }
 
         display_ptr->ShowAiPrintResultImage(std::move(image));
+        if (Application::GetInstance().GetDeviceState() == kDeviceStateIdle) {
+            Application::GetInstance().ToggleChatState();
+        }
     });
 }
