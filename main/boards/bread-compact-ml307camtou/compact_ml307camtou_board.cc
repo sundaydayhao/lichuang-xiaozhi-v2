@@ -262,7 +262,8 @@ private:
         config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
         camera_ = new Esp32Camera(config);
         if (camera_ != nullptr) {
-            camera_->SetHMirror(false);
+            camera_->SetHMirror(CAMERA_MIRROR_X);
+            camera_->SetVFlip(CAMERA_FLIP_Y);
             if (!pending_camera_explain_url_.empty()) {
                 camera_->SetExplainUrl(pending_camera_explain_url_, pending_camera_explain_token_);
             }
