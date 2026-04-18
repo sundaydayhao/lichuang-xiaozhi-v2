@@ -14,10 +14,11 @@
 #include <esp_hmac.h>
 #endif
 
+#include <cctype>
 #include <cstring>
-#include <vector>
-#include <sstream>
 #include <algorithm>
+#include <limits>
+#include <vector>
 
 #define TAG "Ota"
 
@@ -377,30 +378,90 @@ bool Ota::StartUpgradeFromUrl(const std::string& url, std::function<void(int pro
 }
 
 std::vector<int> Ota::ParseVersion(const std::string& version) {
-    std::vector<int> versionNumbers;
-    std::stringstream ss(version);
-    std::string segment;
-    
-    while (std::getline(ss, segment, '.')) {
-        versionNumbers.push_back(std::stoi(segment));
+    std::vector<int> version_numbers;
+    size_t pos = 0;
+    bool started = false;
+    bool expect_number = false;
+
+    while (pos < version.size()) {
+        while (pos < version.size() && std::isspace(static_cast<unsigned char>(version[pos]))) {
+            ++pos;
+        }
+
+        if (pos >= version.size()) {
+            break;
+        }
+
+        if (!started) {
+            while (pos < version.size() && !std::isdigit(static_cast<unsigned char>(version[pos]))) {
+                ++pos;
+            }
+            if (pos >= version.size()) {
+                break;
+            }
+        } else if (expect_number && !std::isdigit(static_cast<unsigned char>(version[pos]))) {
+            ESP_LOGW(TAG, "Invalid version string: %s", version.c_str());
+            return {};
+        } else if (!std::isdigit(static_cast<unsigned char>(version[pos]))) {
+            break;
+        }
+
+        int value = 0;
+        while (pos < version.size() && std::isdigit(static_cast<unsigned char>(version[pos]))) {
+            const int digit = version[pos] - '0';
+            if (value > (std::numeric_limits<int>::max() - digit) / 10) {
+                value = std::numeric_limits<int>::max();
+            } else {
+                value = value * 10 + digit;
+            }
+            ++pos;
+        }
+
+        version_numbers.push_back(value);
+        started = true;
+        expect_number = false;
+
+        while (pos < version.size() && std::isspace(static_cast<unsigned char>(version[pos]))) {
+            ++pos;
+        }
+
+        if (pos < version.size() && version[pos] == '.') {
+            ++pos;
+            expect_number = true;
+        }
     }
-    
-    return versionNumbers;
+
+    if (expect_number || version_numbers.empty()) {
+        ESP_LOGW(TAG, "Invalid version string: %s", version.c_str());
+        return {};
+    }
+
+    return version_numbers;
 }
 
 bool Ota::IsNewVersionAvailable(const std::string& currentVersion, const std::string& newVersion) {
     std::vector<int> current = ParseVersion(currentVersion);
     std::vector<int> newer = ParseVersion(newVersion);
-    
-    for (size_t i = 0; i < std::min(current.size(), newer.size()); ++i) {
+
+    if (current.empty() || newer.empty()) {
+        ESP_LOGW(TAG, "Skip version comparison, current=%s, new=%s",
+            currentVersion.c_str(), newVersion.c_str());
+        return false;
+    }
+
+    size_t max_size = std::max(current.size(), newer.size());
+    current.resize(max_size, 0);
+    newer.resize(max_size, 0);
+
+    for (size_t i = 0; i < max_size; ++i) {
         if (newer[i] > current[i]) {
             return true;
         } else if (newer[i] < current[i]) {
             return false;
         }
     }
-    
-    return newer.size() > current.size();
+
+    return false;
 }
 
 std::string Ota::GetActivationPayload() {

@@ -145,7 +145,6 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
         return false;
     }
 
-    afe_config_print(afe_config);
     afe_iface_ = esp_afe_handle_from_config(afe_config);
     if (afe_iface_ == nullptr) {
         ESP_LOGE(TAG, "esp_afe_handle_from_config failed");
