@@ -39,12 +39,14 @@ constexpr int kMenuButtonHitPadding = 8;
 constexpr int kVisionOptionId = 4;
 constexpr int kRemoteSelfieOptionId = 6;
 constexpr int kAiPrintOptionId = 7;
+constexpr int kWordDictationOptionId = 8;
 constexpr int kAiAlarmOptionId = 1;
 constexpr int kSettingsOptionId = 12;
 constexpr int kBackTargetMainMenu = 0;
 constexpr int kBackTargetSettings = 1;
 constexpr int kBackTargetCamera = 2;
 constexpr int kBackTargetGallery = 3;
+constexpr int kBackTargetWordDictation = 4;
 
 lv_dir_t GetGestureDirection() {
     lv_indev_t* indev = lv_indev_active();
@@ -71,6 +73,7 @@ UiLcdDisplay::UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
     };
     ESP_ERROR_CHECK(esp_timer_create(&camera_preview_timer_args, &camera_preview_timer_));
     InitializeAlarmSupport();
+    InitializeWordDictationSupport();
 
     InitializeMainMenu();
 }
@@ -81,6 +84,7 @@ UiLcdDisplay::~UiLcdDisplay() {
         esp_timer_delete(camera_preview_timer_);
         camera_preview_timer_ = nullptr;
     }
+    DeinitializeWordDictationSupport();
     DeinitializeAlarmSupport();
     BleHid::GetInstance().OnConnectionStateChanged({});
 }
@@ -957,6 +961,15 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         return;
     }
 
+    if (option_id == kWordDictationOptionId) {
+        gallery_swipe_enabled_ = false;
+        StopCameraPreview();
+        HideAlarmPanel();
+        ClearFeatureVisual();
+        ShowWordDictationTextbookScreen();
+        return;
+    }
+
     if (lv_screen_active() == camera_screen_) {
         BleHid::GetInstance().SetScreenActive(false);
         ResumeAudioAfterRemoteSelfie();
@@ -993,6 +1006,8 @@ void UiLcdDisplay::ReturnToMainMenu() {
         ResumeAudioAfterRemoteSelfie();
     }
 
+    StopWordDictationPlayback();
+    word_dictation_view_ = WordDictationView::kHidden;
     gallery_swipe_enabled_ = false;
     StopCameraPreview();
     HideAlarmPanel();
@@ -1458,6 +1473,8 @@ void UiLcdDisplay::OnBackButtonClicked(lv_event_t* e) {
             data->display->ReturnToCameraScreen();
         } else if (data->target == kBackTargetGallery) {
             data->display->ShowGallery();
+        } else if (data->target == kBackTargetWordDictation) {
+            data->display->HandleWordDictationBack();
         } else {
             data->display->ReturnToMainMenu();
         }

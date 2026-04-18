@@ -5,6 +5,7 @@
 #include "device_state.h"
 
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -54,6 +55,55 @@ private:
         int target = 0;
     };
 
+    struct WordDictationWord {
+        std::string text;
+        std::string note;
+        bool selected = true;
+    };
+
+    struct WordDictationStage {
+        std::string name;
+        std::vector<WordDictationWord> words;
+    };
+
+    struct WordDictationTextbook {
+        std::string category;
+        std::string grade;
+        std::string version;
+        std::string subtitle;
+        std::string cover_title;
+        uint32_t cover_color = 0;
+        std::vector<WordDictationStage> stages;
+    };
+
+    struct WordDictationListItemData {
+        UiLcdDisplay* display = nullptr;
+        int index = 0;
+    };
+
+    struct WordDictationActionData {
+        UiLcdDisplay* display = nullptr;
+        int action = 0;
+    };
+
+    struct WordDictationSettings {
+        bool random_order = false;
+        int interval_seconds = 10;
+        int repeat_count = 1;
+        bool bilingual_mode = false;
+    };
+
+    enum class WordDictationView {
+        kHidden = 0,
+        kTextbooks,
+        kStages,
+        kWords,
+        kSummary,
+        kSettings,
+        kCountdown,
+        kRunning,
+    };
+
     lv_obj_t* ai_screen_ = nullptr;
     lv_obj_t* ai_back_button_ = nullptr;
     lv_obj_t* vision_ai_badge_ = nullptr;
@@ -84,6 +134,7 @@ private:
     BackButtonData camera_back_button_data_ = {};
     BackButtonData gallery_back_button_data_ = {};
     BackButtonData photo_viewer_back_button_data_ = {};
+    BackButtonData word_dictation_back_button_data_ = {};
 
     lv_obj_t* camera_screen_ = nullptr;
     lv_obj_t* camera_mode_btn_left_ = nullptr;
@@ -116,18 +167,39 @@ private:
     lv_obj_t* alarm_hourglass_label_ = nullptr;
     std::array<lv_obj_t*, 24> alarm_ring_segments_ = {};
 
+    lv_obj_t* word_dictation_screen_ = nullptr;
+    lv_obj_t* word_dictation_title_label_ = nullptr;
+    lv_obj_t* word_dictation_content_ = nullptr;
+    lv_obj_t* word_dictation_back_button_ = nullptr;
+    lv_obj_t* word_dictation_running_count_label_ = nullptr;
+    lv_obj_t* word_dictation_running_hint_label_ = nullptr;
+
     bool gallery_swipe_enabled_ = false;
     int current_feature_option_id_ = 0;
     esp_timer_handle_t camera_preview_timer_ = nullptr;
     std::function<void()> camera_preview_callback_;
     std::atomic<bool> ai_print_generation_running_ = false;
     bool remote_selfie_audio_suspended_ = false;
+    WordDictationView word_dictation_view_ = WordDictationView::kHidden;
+    WordDictationSettings word_dictation_settings_ = {};
+    std::vector<WordDictationTextbook> word_dictation_textbooks_;
+    std::vector<WordDictationListItemData> word_dictation_list_item_data_;
+    std::vector<WordDictationActionData> word_dictation_action_data_;
+    std::vector<int> word_dictation_play_order_;
+    int word_dictation_selected_textbook_index_ = -1;
+    int word_dictation_selected_stage_index_ = -1;
+    int word_dictation_countdown_value_ = 3;
+    size_t word_dictation_current_play_index_ = 0;
+    esp_timer_handle_t word_dictation_countdown_timer_ = nullptr;
+    esp_timer_handle_t word_dictation_progress_timer_ = nullptr;
 
     void InitializeMainMenu();
     void InitializeCameraScreen();
     void InitializeGallery();
     void InitializeSettingsScreen();
     void InitializeAboutScreen();
+    void InitializeWordDictationSupport();
+    void DeinitializeWordDictationSupport();
     void InitializeAlarmSupport();
     void DeinitializeAlarmSupport();
     void InitializeAlarmPanel();
@@ -160,6 +232,29 @@ private:
     void ShowAiPrintGeneratingState();
     void ShowAiPrintErrorState(const std::string& message);
     void ShowAiPrintResultImage(std::unique_ptr<LvglImage> image);
+    void ShowWordDictationTextbookScreen();
+    void ShowWordDictationStageScreen();
+    void ShowWordDictationWordScreen();
+    void ShowWordDictationSummaryScreen();
+    void ShowWordDictationSettingsScreen();
+    void StartWordDictationCountdown();
+    void ShowWordDictationCountdownScreen();
+    void ShowWordDictationRunningScreen();
+    void HandleWordDictationBack();
+    void SelectWordDictationTextbook(int index);
+    void SelectWordDictationStage(int index);
+    void ToggleWordDictationWord(int index);
+    void SetAllWordDictationWordsSelected(bool selected);
+    void CycleWordDictationSetting(int action);
+    void AdvanceWordDictationCountdown();
+    void AdvanceWordDictationPlayback();
+    void StopWordDictationPlayback();
+    void UpdateWordDictationBackButton(bool close_mode);
+    int GetWordDictationSelectedWordCount() const;
+    int GetWordDictationPlaybackStepCount() const;
+    std::string GetWordDictationStageTitle() const;
+    std::string GetWordDictationSummaryText() const;
+    void RebuildWordDictationPlayOrder();
     void ApplyFeatureVisual(int option_id);
     void ClearFeatureVisual();
     void UpdateVisionAiBadgeVisibility();
@@ -199,6 +294,8 @@ private:
     static void OnCameraActionButtonClicked(lv_event_t* e);
     static void OnSettingsItemClicked(lv_event_t* e);
     static void OnBackButtonClicked(lv_event_t* e);
+    static void OnWordDictationListItemClicked(lv_event_t* e);
+    static void OnWordDictationActionClicked(lv_event_t* e);
     static void OnGalleryItemClicked(lv_event_t* e);
     static void OnGalleryItemLongPressed(lv_event_t* e);
     static void OnDeleteDialogCancel(lv_event_t* e);
