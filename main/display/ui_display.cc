@@ -74,6 +74,7 @@ UiLcdDisplay::UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
     ESP_ERROR_CHECK(esp_timer_create(&camera_preview_timer_args, &camera_preview_timer_));
     InitializeAlarmSupport();
     InitializeWordDictationSupport();
+    InitializeSleepMusicSupport();
 
     InitializeMainMenu();
 }
@@ -84,6 +85,7 @@ UiLcdDisplay::~UiLcdDisplay() {
         esp_timer_delete(camera_preview_timer_);
         camera_preview_timer_ = nullptr;
     }
+    DeinitializeSleepMusicSupport();
     DeinitializeWordDictationSupport();
     DeinitializeAlarmSupport();
     BleHid::GetInstance().OnConnectionStateChanged({});
@@ -970,6 +972,15 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         return;
     }
 
+    if (option_id == 11) {
+        gallery_swipe_enabled_ = false;
+        StopCameraPreview();
+        HideAlarmPanel();
+        ClearFeatureVisual();
+        ShowSleepMusicScreen();
+        return;
+    }
+
     if (lv_screen_active() == camera_screen_) {
         BleHid::GetInstance().SetScreenActive(false);
         ResumeAudioAfterRemoteSelfie();
@@ -1007,6 +1018,7 @@ void UiLcdDisplay::ReturnToMainMenu() {
     }
 
     StopWordDictationPlayback();
+    StopSleepMusicPlayback(false);
     word_dictation_view_ = WordDictationView::kHidden;
     gallery_swipe_enabled_ = false;
     StopCameraPreview();

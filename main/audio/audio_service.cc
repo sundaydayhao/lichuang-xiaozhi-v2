@@ -619,6 +619,38 @@ void AudioService::PlaySound(const std::string_view& ogg) {
     }
 }
 
+void AudioService::PlayPcm(std::vector<int16_t>&& pcm, int sample_rate) {
+    if (codec_ == nullptr || pcm.empty() || sample_rate <= 0) {
+        return;
+    }
+
+    auto task = std::make_unique<AudioTask>();
+    task->type = kAudioTaskTypeDecodeToPlaybackQueue;
+    task->timestamp = 0;
+
+    if (sample_rate == codec_->output_sample_rate()) {
+        task->pcm = std::move(pcm);
+    } else {
+        OpusResampler resampler;
+        resampler.Configure(sample_rate, codec_->output_sample_rate());
+        const int target_size = resampler.GetOutputSamples(pcm.size());
+        if (target_size <= 0) {
+            return;
+        }
+
+        std::vector<int16_t> resampled(target_size);
+        resampler.Process(pcm.data(), pcm.size(), resampled.data());
+        task->pcm = std::move(resampled);
+    }
+
+    std::lock_guard<std::mutex> lock(audio_queue_mutex_);
+    while (audio_playback_queue_.size() >= MAX_PLAYBACK_TASKS_IN_QUEUE) {
+        audio_playback_queue_.pop_front();
+    }
+    audio_playback_queue_.push_back(std::move(task));
+    audio_queue_cv_.notify_all();
+}
+
 bool AudioService::IsIdle() {
     std::lock_guard<std::mutex> lock(audio_queue_mutex_);
     return audio_encode_queue_.empty() && audio_decode_queue_.empty() && audio_playback_queue_.empty() && audio_testing_queue_.empty();
