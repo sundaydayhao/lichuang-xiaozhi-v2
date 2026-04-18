@@ -1,6 +1,5 @@
 #include "audio_service.h"
 #include <esp_log.h>
-#include <esp_heap_caps.h>
 #include <cstring>
 
 #if CONFIG_USE_AUDIO_PROCESSOR
@@ -9,16 +8,14 @@
 #include "processors/no_audio_processor.h"
 #endif
 
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32P4
 #include "wake_words/afe_wake_word.h"
 #include "wake_words/custom_wake_word.h"
+#else
+#include "wake_words/esp_wake_word.h"
+#endif
 
 #define TAG "AudioService"
-
-namespace {
-
-constexpr size_t kOpusCodecTaskStackSize = 2048 * 13;
-
-}
 
 
 AudioService::AudioService() {
@@ -28,10 +25,6 @@ AudioService::AudioService() {
 AudioService::~AudioService() {
     if (event_group_ != nullptr) {
         vEventGroupDelete(event_group_);
-    }
-    if (opus_codec_task_stack_ != nullptr) {
-        heap_caps_free(opus_codec_task_stack_);
-        opus_codec_task_stack_ = nullptr;
     }
 }
 
@@ -117,27 +110,11 @@ void AudioService::Start() {
 #endif
 
     /* Start the opus codec task */
-    if (opus_codec_task_stack_ == nullptr) {
-        opus_codec_task_stack_ = static_cast<StackType_t*>(heap_caps_malloc(
-            kOpusCodecTaskStackSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-        if (opus_codec_task_stack_ == nullptr) {
-            ESP_LOGW(TAG, "Failed to allocate Opus codec task stack in PSRAM, fallback to internal SRAM");
-        }
-    }
-
-    if (opus_codec_task_stack_ != nullptr) {
-        opus_codec_task_handle_ = xTaskCreateStatic([](void* arg) {
-            AudioService* audio_service = (AudioService*)arg;
-            audio_service->OpusCodecTask();
-            vTaskDelete(NULL);
-        }, "opus_codec", kOpusCodecTaskStackSize, this, 2, opus_codec_task_stack_, &opus_codec_task_buffer_);
-    } else {
-        xTaskCreate([](void* arg) {
-            AudioService* audio_service = (AudioService*)arg;
-            audio_service->OpusCodecTask();
-            vTaskDelete(NULL);
-        }, "opus_codec", kOpusCodecTaskStackSize, this, 2, &opus_codec_task_handle_);
-    }
+    xTaskCreate([](void* arg) {
+        AudioService* audio_service = (AudioService*)arg;
+        audio_service->OpusCodecTask();
+        vTaskDelete(NULL);
+    }, "opus_codec", 2048 * 13, this, 2, &opus_codec_task_handle_);
 }
 
 void AudioService::Stop() {
@@ -675,6 +652,7 @@ void AudioService::CheckAndUpdateAudioPowerState() {
 void AudioService::SetModelsList(srmodel_list_t* models_list) {
     models_list_ = models_list;
 
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32P4
     if (esp_srmodel_filter(models_list_, ESP_MN_PREFIX, NULL) != nullptr) {
         wake_word_ = std::make_unique<CustomWakeWord>();
     } else if (esp_srmodel_filter(models_list_, ESP_WN_PREFIX, NULL) != nullptr) {
@@ -682,6 +660,13 @@ void AudioService::SetModelsList(srmodel_list_t* models_list) {
     } else {
         wake_word_ = nullptr;
     }
+#else
+    if (esp_srmodel_filter(models_list_, ESP_WN_PREFIX, NULL) != nullptr) {
+        wake_word_ = std::make_unique<EspWakeWord>();
+    } else {
+        wake_word_ = nullptr;
+    }
+#endif
 
     if (wake_word_) {
         wake_word_->OnWakeWordDetected([this](const std::string& wake_word) {
@@ -693,5 +678,9 @@ void AudioService::SetModelsList(srmodel_list_t* models_list) {
 }
 
 bool AudioService::IsAfeWakeWord() {
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32P4
     return wake_word_ != nullptr && dynamic_cast<AfeWakeWord*>(wake_word_.get()) != nullptr;
+#else
+    return false;
+#endif
 }
