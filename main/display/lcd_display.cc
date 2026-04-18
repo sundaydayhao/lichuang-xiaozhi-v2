@@ -280,6 +280,7 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_pad_all(content_, lvgl_theme->spacing(4), 0);
     lv_obj_set_style_border_width(content_, 0, 0);
     lv_obj_set_style_bg_color(content_, lvgl_theme->chat_background_color(), 0); // Background for chat area
+    lv_obj_set_style_bg_opa(content_, LV_OPA_TRANSP, 0);
 
     // Enable scrolling for chat content
     lv_obj_set_scrollbar_mode(content_, LV_SCROLLBAR_MODE_OFF);
@@ -819,6 +820,17 @@ void LcdDisplay::SetEmotion(const char* emotion) {
     }
     
     if (emoji_image_ == nullptr) {
+        return;
+    }
+
+    if (suppress_emotion_display_) {
+        DisplayLockGuard lock(this);
+        if (emoji_image_ != nullptr) {
+            lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (emoji_label_ != nullptr) {
+            lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
+        }
         return;
     }
 

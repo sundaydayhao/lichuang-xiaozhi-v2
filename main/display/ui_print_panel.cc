@@ -316,6 +316,7 @@ bool UiLcdDisplay::IsAiPrintActive() const {
 }
 
 bool UiLcdDisplay::HandleFeatureSpeechRecognized(const std::string& text) {
+    MarkDialogueScenePromptCaptured();
     return UiPrintPanel::HandleSpeechRecognized(*this, text);
 }
 

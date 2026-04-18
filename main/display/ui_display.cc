@@ -8,6 +8,7 @@
 #include "lvgl_theme.h"
 #include "settings.h"
 #include "system_info.h"
+#include "assets/lang_config.h"
 #include "widgets/list/lv_list.h"
 
 #include <at_modem.h>
@@ -25,6 +26,7 @@
 #include <dirent.h>
 #include <functional>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -37,11 +39,18 @@ constexpr int kMenuIconOriginalSize = 48;
 constexpr int kMenuSwipeThreshold = 14;
 constexpr int kMenuButtonHitPadding = 8;
 constexpr int kVisionOptionId = 4;
+constexpr int kEncyclopediaOptionId = 2;
+constexpr int kOralPracticeOptionId = 3;
+constexpr int kBedtimeStoryOptionId = 5;
 constexpr int kRemoteSelfieOptionId = 6;
 constexpr int kAiPrintOptionId = 7;
 constexpr int kWordDictationOptionId = 8;
+constexpr int kFaceReadingOptionId = 9;
+constexpr int kMagicMirrorOptionId = 10;
 constexpr int kAiAlarmOptionId = 1;
 constexpr int kSettingsOptionId = 12;
+constexpr int kEncyclopediaPromptTimeoutSeconds = 10;
+constexpr uint64_t kDialogueSceneTimerPeriodUs = 200 * 1000;
 constexpr int kBackTargetMainMenu = 0;
 constexpr int kBackTargetSettings = 1;
 constexpr int kBackTargetCamera = 2;
@@ -51,6 +60,43 @@ constexpr int kBackTargetWordDictation = 4;
 lv_dir_t GetGestureDirection() {
     lv_indev_t* indev = lv_indev_active();
     return indev ? lv_indev_get_gesture_dir(indev) : LV_DIR_NONE;
+}
+
+std::string EscapeJsonString(const std::string& input) {
+    std::string escaped;
+    escaped.reserve(input.size() + 16);
+    for (char ch : input) {
+        switch (ch) {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            escaped += ch;
+            break;
+        }
+    }
+    return escaped;
+}
+
+lv_obj_t* TakeValidObject(lv_obj_t*& object) {
+    if (object != nullptr && lv_obj_is_valid(object)) {
+        return object;
+    }
+
+    object = nullptr;
+    return nullptr;
 }
 
 } // namespace
@@ -72,6 +118,19 @@ UiLcdDisplay::UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
         .skip_unhandled_events = true,
     };
     ESP_ERROR_CHECK(esp_timer_create(&camera_preview_timer_args, &camera_preview_timer_));
+    esp_timer_create_args_t dialogue_scene_timer_args = {
+        .callback = [](void* arg) {
+            auto* display = static_cast<UiLcdDisplay*>(arg);
+            if (display != nullptr) {
+                display->UpdateDialogueScenePrompt();
+            }
+        },
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "dialogue_scene_timer",
+        .skip_unhandled_events = true,
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&dialogue_scene_timer_args, &dialogue_scene_timer_));
     InitializeAlarmSupport();
     InitializeWordDictationSupport();
     InitializeSleepMusicSupport();
@@ -81,9 +140,14 @@ UiLcdDisplay::UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
 
 UiLcdDisplay::~UiLcdDisplay() {
     StopCameraPreview();
+    ExitDialogueScene(false);
     if (camera_preview_timer_ != nullptr) {
         esp_timer_delete(camera_preview_timer_);
         camera_preview_timer_ = nullptr;
+    }
+    if (dialogue_scene_timer_ != nullptr) {
+        esp_timer_delete(dialogue_scene_timer_);
+        dialogue_scene_timer_ = nullptr;
     }
     DeinitializeSleepMusicSupport();
     DeinitializeWordDictationSupport();
@@ -172,6 +236,93 @@ const char* UiLcdDisplay::GetFeatureBackgroundAssetName(int option_id) const {
     default:
         return nullptr;
     }
+}
+
+bool UiLcdDisplay::IsDialogueSceneOption(int option_id) const {
+    switch (option_id) {
+    case kEncyclopediaOptionId:
+    case kOralPracticeOptionId:
+    case kBedtimeStoryOptionId:
+    case kFaceReadingOptionId:
+    case kMagicMirrorOptionId:
+        return true;
+    default:
+        return false;
+    }
+}
+
+std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
+    const char* scene = nullptr;
+    const char* mode = nullptr;
+    std::string instructions;
+    const char* language = Lang::CODE;
+
+    switch (option_id) {
+    case kEncyclopediaOptionId:
+        scene = "encyclopedia";
+        mode = "knowledge_guide";
+        instructions =
+            "You are a friendly encyclopedia guide for children. "
+            "Always reply in the current reply_language. "
+            "Answer general knowledge questions clearly, safely, and in a child-friendly way. "
+            "Keep answers concise first, then expand only if the user asks.";
+        break;
+    case kOralPracticeOptionId:
+        scene = "oral_practice";
+        language = "en-US";
+        mode = "spoken_english_practice";
+        instructions =
+            "You are an English conversation coach. "
+            "Reply in natural English only. "
+            "Keep the conversation focused on spoken English practice. "
+            "Correct mistakes briefly and gently. "
+            "If the user does not speak English, ask them to continue in English.";
+        break;
+    case kBedtimeStoryOptionId:
+        scene = "bedtime_story";
+        mode = "bedtime_storyteller";
+        instructions =
+            "You are a bedtime storyteller for children. "
+            "Always reply in the current reply_language. "
+            "Tell warm, calming, age-appropriate bedtime stories and keep the tone gentle. "
+            "You may ask one short follow-up question about theme, character, or length. "
+            "Keep stories suitable for listening aloud.";
+        break;
+    case kFaceReadingOptionId:
+        scene = "fortune";
+        mode = "entertainment_face_reading";
+        instructions =
+            "You are an entertainment-only face reading assistant. "
+            "Always reply in the current reply_language. "
+            "If the user asks about face, palm, tongue, or appearance-based fun analysis, "
+            "call self.camera.take_photo. "
+            "Be playful and light. Clearly state that the result is for entertainment only "
+            "and is not medical, legal, or factual fortune advice.";
+        break;
+    case kMagicMirrorOptionId:
+        scene = "makeup";
+        mode = "beauty_mirror";
+        instructions =
+            "You are a friendly makeup and grooming assistant. "
+            "Always reply in the current reply_language. "
+            "When the user wants appearance feedback, call self.camera.take_photo. "
+            "Start with kind compliments, then give practical makeup, skincare, or styling "
+            "suggestions suitable for the person in view. "
+            "Keep the tone positive and child-safe.";
+        break;
+    default:
+        return "";
+    }
+
+    std::ostringstream oss;
+    oss << "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{"
+        << "\"scene\":\"" << scene << "\","
+        << "\"language\":\"" << language << "\","
+        << "\"reply_language\":\"" << language << "\","
+        << "\"input_language\":\"" << language << "\","
+        << "\"mode\":\"" << mode << "\","
+        << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
+    return oss.str();
 }
 
 const char* UiLcdDisplay::GetSettingsTitle() const {
@@ -303,35 +454,51 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     preview_image_cached_.reset();
     UpdateVisionAiBadgeVisibility();
 
-    if (chat_message_label_ != nullptr) {
-        lv_obj_clear_flag(chat_message_label_, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(chat_message_label_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
+    if (chat_label != nullptr) {
+        lv_obj_clear_flag(chat_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(chat_label, LV_OBJ_FLAG_IGNORE_LAYOUT);
     }
 
-    if (feature_background_image_ == nullptr || emoji_box_ == nullptr) {
+    if (feature_background_image_ == nullptr) {
         return;
     }
 
     const lv_image_dsc_t* background = LoadAssetImage(GetFeatureBackgroundAssetName(option_id));
     if (background == nullptr) {
+        suppress_emotion_display_ = false;
         lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
         if (preview_image_ != nullptr) {
             lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
             lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
         }
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-        if (chat_message_label_ != nullptr) {
-            lv_label_set_text(chat_message_label_, GetMenuText(option_id));
+        if (emoji_box_ != nullptr) {
+            lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (emoji_label_ != nullptr) {
+            lv_obj_remove_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (chat_label != nullptr) {
+            lv_label_set_text(chat_label, GetMenuText(option_id));
         }
         return;
     }
 
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, "");
+    if (chat_label != nullptr) {
+        lv_label_set_text(chat_label, "");
     }
 
+    suppress_emotion_display_ = true;
     lv_image_set_src(feature_background_image_, background);
-    lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    if (emoji_box_ != nullptr) {
+        lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (emoji_label_ != nullptr) {
+        lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (emoji_image_ != nullptr) {
+        lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
+    }
     if (preview_image_ != nullptr) {
         lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
         lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
@@ -341,6 +508,7 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
 
 void UiLcdDisplay::ClearFeatureVisual() {
     current_feature_option_id_ = 0;
+    suppress_emotion_display_ = false;
 
     DisplayLockGuard lock(this);
     if (preview_timer_ != nullptr) {
@@ -349,9 +517,10 @@ void UiLcdDisplay::ClearFeatureVisual() {
     preview_image_cached_.reset();
     UpdateVisionAiBadgeVisibility();
 
-    if (chat_message_label_ != nullptr) {
-        lv_obj_clear_flag(chat_message_label_, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(chat_message_label_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
+    if (chat_label != nullptr) {
+        lv_obj_clear_flag(chat_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(chat_label, LV_OBJ_FLAG_IGNORE_LAYOUT);
     }
 
     if (feature_background_image_ != nullptr) {
@@ -364,9 +533,141 @@ void UiLcdDisplay::ClearFeatureVisual() {
     if (emoji_box_ != nullptr) {
         lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, "");
+    if (emoji_label_ != nullptr) {
+        lv_obj_remove_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
     }
+    if (chat_label != nullptr) {
+        lv_label_set_text(chat_label, "");
+    }
+    if (feature_overlay_label_ != nullptr) {
+        lv_label_set_text(feature_overlay_label_, "");
+        lv_obj_add_flag(feature_overlay_label_, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void UiLcdDisplay::SetDialogueSceneOverlayText(const char* text) {
+    if (feature_overlay_label_ == nullptr) {
+        return;
+    }
+
+    DisplayLockGuard lock(this);
+    if (text == nullptr || text[0] == '\0') {
+        lv_label_set_text(feature_overlay_label_, "");
+        lv_obj_add_flag(feature_overlay_label_, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_label_set_text(feature_overlay_label_, text);
+    lv_obj_clear_flag(feature_overlay_label_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(feature_overlay_label_);
+}
+
+void UiLcdDisplay::ClearAiSceneMessages() {
+#if CONFIG_USE_WECHAT_MESSAGE_STYLE
+    DisplayLockGuard lock(this);
+    if (content_ == nullptr) {
+        chat_message_label_ = nullptr;
+        return;
+    }
+
+    while (lv_obj_get_child_cnt(content_) > 0) {
+        lv_obj_del(lv_obj_get_child(content_, 0));
+    }
+    chat_message_label_ = nullptr;
+#else
+    DisplayLockGuard lock(this);
+    lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
+    if (chat_label != nullptr) {
+        lv_label_set_text(chat_label, "");
+    }
+#endif
+}
+
+void UiLcdDisplay::MarkDialogueScenePromptCaptured() {
+    if (current_dialogue_scene_option_id_ != kEncyclopediaOptionId || dialogue_scene_prompt_captured_) {
+        return;
+    }
+
+    dialogue_scene_prompt_captured_ = true;
+    dialogue_scene_deadline_us_ = 0;
+    SetDialogueSceneOverlayText("");
+    if (dialogue_scene_timer_ != nullptr) {
+        esp_timer_stop(dialogue_scene_timer_);
+    }
+}
+
+void UiLcdDisplay::UpdateDialogueScenePrompt() {
+    if (current_dialogue_scene_option_id_ != kEncyclopediaOptionId || dialogue_scene_prompt_captured_) {
+        return;
+    }
+
+    const int64_t now_us = esp_timer_get_time();
+    int seconds_remaining =
+        static_cast<int>((dialogue_scene_deadline_us_ - now_us + 999999) / 1000000);
+    if (seconds_remaining < 0) {
+        seconds_remaining = 0;
+    }
+
+    char buffer[16];
+    snprintf(buffer, sizeof(buffer), "%ds", seconds_remaining);
+    SetDialogueSceneOverlayText(buffer);
+
+    if (now_us < dialogue_scene_deadline_us_) {
+        return;
+    }
+
+    if (dialogue_scene_timer_ != nullptr) {
+        esp_timer_stop(dialogue_scene_timer_);
+    }
+    ExitDialogueScene(true);
+    ReturnToMainMenu();
+}
+
+void UiLcdDisplay::ExitDialogueScene(bool exit_chat_session) {
+    const bool was_active = current_dialogue_scene_option_id_ != 0;
+    current_dialogue_scene_option_id_ = 0;
+    dialogue_scene_deadline_us_ = 0;
+    dialogue_scene_prompt_captured_ = false;
+
+    if (dialogue_scene_timer_ != nullptr) {
+        esp_timer_stop(dialogue_scene_timer_);
+    }
+    SetDialogueSceneOverlayText("");
+
+    if (!was_active) {
+        return;
+    }
+
+    Application::GetInstance().SetSceneContextPayload("");
+    if (exit_chat_session) {
+        Application::GetInstance().ExitChatSession();
+    }
+}
+
+void UiLcdDisplay::EnterDialogueScene(int option_id) {
+    current_dialogue_scene_option_id_ = option_id;
+    dialogue_scene_prompt_captured_ = false;
+    dialogue_scene_deadline_us_ = 0;
+
+    ClearAiSceneMessages();
+    ApplyFeatureVisual(option_id);
+
+    const std::string payload = BuildDialogueScenePayload(option_id);
+    Application::GetInstance().SetSceneContextPayload(payload);
+
+    if (option_id == kEncyclopediaOptionId) {
+        dialogue_scene_deadline_us_ =
+            esp_timer_get_time() + static_cast<int64_t>(kEncyclopediaPromptTimeoutSeconds) * 1000 * 1000;
+        SetDialogueSceneOverlayText("10s");
+        if (dialogue_scene_timer_ != nullptr) {
+            esp_timer_stop(dialogue_scene_timer_);
+            ESP_ERROR_CHECK(esp_timer_start_periodic(dialogue_scene_timer_, kDialogueSceneTimerPeriodUs));
+        }
+    } else {
+        SetDialogueSceneOverlayText("");
+    }
+
+    Application::GetInstance().ToggleChatState();
 }
 
 void UiLcdDisplay::InitializeMainMenu() {
@@ -384,6 +685,21 @@ void UiLcdDisplay::InitializeMainMenu() {
     lv_obj_center(feature_background_image_);
     lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_to_index(feature_background_image_, 0);
+
+    feature_overlay_label_ = lv_label_create(ai_screen_);
+    lv_obj_set_width(feature_overlay_label_, LV_SIZE_CONTENT);
+    lv_obj_align(feature_overlay_label_, LV_ALIGN_BOTTOM_MID, 0, -26);
+    lv_obj_add_flag(feature_overlay_label_, LV_OBJ_FLAG_FLOATING);
+    lv_obj_add_flag(feature_overlay_label_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_clear_flag(feature_overlay_label_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(feature_overlay_label_, lv_color_hex(0x111111), 0);
+    lv_obj_set_style_bg_opa(feature_overlay_label_, LV_OPA_60, 0);
+    lv_obj_set_style_radius(feature_overlay_label_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_text_color(feature_overlay_label_, lv_color_white(), 0);
+    lv_obj_set_style_pad_hor(feature_overlay_label_, 10, 0);
+    lv_obj_set_style_pad_ver(feature_overlay_label_, 4, 0);
+    lv_label_set_text(feature_overlay_label_, "");
+    lv_obj_add_flag(feature_overlay_label_, LV_OBJ_FLAG_HIDDEN);
 
     vision_ai_badge_ = lv_obj_create(ai_screen_);
     lv_obj_set_size(vision_ai_badge_, 42, 42);
@@ -807,6 +1123,14 @@ void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
     lv_obj_clear_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_move_foreground(status_bar_);
+
+#if CONFIG_USE_WECHAT_MESSAGE_STYLE
+    if (container_ != nullptr) {
+        lv_obj_update_layout(status_bar_);
+        const lv_coord_t reserved_top = (target_screen == ai_screen_) ? lv_obj_get_height(status_bar_) : 0;
+        lv_obj_set_style_pad_top(container_, reserved_top, 0);
+    }
+#endif
 }
 
 lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, BackButtonData* data, bool dark_surface) {
@@ -935,6 +1259,10 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         return;
     }
 
+    if (current_dialogue_scene_option_id_ != 0) {
+        ExitDialogueScene(true);
+    }
+
     if (option_id == kRemoteSelfieOptionId) {
         if (camera_screen_ == nullptr) {
             InitializeCameraScreen();
@@ -996,6 +1324,19 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         ResumeAudioAfterRemoteSelfie();
     }
 
+    if (IsDialogueSceneOption(option_id)) {
+        gallery_swipe_enabled_ = false;
+        StopCameraPreview();
+        HideAlarmPanel();
+        EnterDialogueScene(option_id);
+        {
+            DisplayLockGuard lock(this);
+            lv_screen_load(ai_screen_);
+            MoveStatusBarToScreen(ai_screen_);
+        }
+        return;
+    }
+
     ApplyFeatureVisual(option_id);
     if (option_id == kAiAlarmOptionId) {
         ShowAlarmPanel();
@@ -1022,6 +1363,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 }
 
 void UiLcdDisplay::ReturnToMainMenu() {
+    ExitDialogueScene(true);
     if (lv_screen_active() == camera_screen_) {
         BleHid::GetInstance().SetScreenActive(false);
         ResumeAudioAfterRemoteSelfie();

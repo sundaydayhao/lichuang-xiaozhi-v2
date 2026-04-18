@@ -113,6 +113,7 @@ private:
     lv_obj_t* ai_back_button_ = nullptr;
     lv_obj_t* vision_ai_badge_ = nullptr;
     lv_obj_t* feature_background_image_ = nullptr;
+    lv_obj_t* feature_overlay_label_ = nullptr;
     lv_obj_t* menu_screen_ = nullptr;
     lv_obj_t* menu_page_container_ = nullptr;
     lv_obj_t* menu_page1_ = nullptr;
@@ -186,6 +187,10 @@ private:
     std::function<void()> camera_preview_callback_;
     std::atomic<bool> ai_print_generation_running_ = false;
     bool remote_selfie_audio_suspended_ = false;
+    int current_dialogue_scene_option_id_ = 0;
+    int64_t dialogue_scene_deadline_us_ = 0;
+    bool dialogue_scene_prompt_captured_ = false;
+    esp_timer_handle_t dialogue_scene_timer_ = nullptr;
     WordDictationView word_dictation_view_ = WordDictationView::kHidden;
     WordDictationSettings word_dictation_settings_ = {};
     std::vector<WordDictationTextbook> word_dictation_textbooks_;
@@ -295,6 +300,12 @@ private:
     void RebuildWordDictationPlayOrder();
     void ApplyFeatureVisual(int option_id);
     void ClearFeatureVisual();
+    void EnterDialogueScene(int option_id);
+    void ExitDialogueScene(bool exit_chat_session);
+    void UpdateDialogueScenePrompt();
+    void SetDialogueSceneOverlayText(const char* text);
+    void ClearAiSceneMessages();
+    void MarkDialogueScenePromptCaptured();
     void UpdateVisionAiBadgeVisibility();
     void RefreshMenuIconImages();
     const char* GetSettingsTitle() const;
@@ -309,10 +320,12 @@ private:
     std::string Get4gImeiForDisplay() const;
     std::string GetIpAddressForDisplay() const;
     std::string GetUuidForDisplay() const;
+    std::string BuildDialogueScenePayload(int option_id) const;
     const lv_image_dsc_t* LoadAssetImage(const char* asset_name);
     const char* GetMenuText(int option_id) const;
     const char* GetMenuIconAssetName(int option_id) const;
     const char* GetFeatureBackgroundAssetName(int option_id) const;
+    bool IsDialogueSceneOption(int option_id) const;
 
     void ShowGallery();
     void RefreshGalleryList();

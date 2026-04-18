@@ -350,6 +350,21 @@ void Application::StopListening() {
     });
 }
 
+void Application::ExitChatSession() {
+    Schedule([this]() {
+        suppress_server_messages_ = false;
+        if (protocol_ != nullptr && protocol_->IsAudioChannelOpened()) {
+            protocol_->CloseAudioChannel();
+            return;
+        }
+
+        if (device_state_ == kDeviceStateListening || device_state_ == kDeviceStateSpeaking ||
+            device_state_ == kDeviceStateConnecting) {
+            SetDeviceState(kDeviceStateIdle);
+        }
+    });
+}
+
 void Application::Start() {
     auto& board = Board::GetInstance();
     SetDeviceState(kDeviceStateStarting);
@@ -437,6 +452,7 @@ void Application::Start() {
     });
     protocol_->OnAudioChannelOpened([this, codec, &board]() {
         board.SetPowerSaveMode(false);
+        scene_context_payload_sent_ = false;
         if (protocol_->server_sample_rate() != codec->output_sample_rate()) {
             ESP_LOGW(TAG, "Server sample rate %d does not match device output sample rate %d, resampling may cause distortion",
                 protocol_->server_sample_rate(), codec->output_sample_rate());
@@ -444,6 +460,7 @@ void Application::Start() {
     });
     protocol_->OnAudioChannelClosed([this, &board]() {
         board.SetPowerSaveMode(true);
+        scene_context_payload_sent_ = false;
         Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
             auto* ui_display = dynamic_cast<UiLcdDisplay*>(display);
@@ -808,6 +825,10 @@ void Application::ApplyAudioBehaviorForState(DeviceState state) {
     case kDeviceStateListening:
         if (!audio_service_.IsAudioProcessorRunning()) {
             if (protocol_) {
+                if (!scene_context_payload_.empty() && !scene_context_payload_sent_) {
+                    protocol_->SendMcpMessage(scene_context_payload_);
+                    scene_context_payload_sent_ = true;
+                }
                 protocol_->SendStartListening(listening_mode_);
             }
             audio_service_.EnableVoiceProcessing(true);
@@ -1014,6 +1035,26 @@ void Application::SendMcpMessage(const std::string& payload) {
         Schedule([this, payload = std::move(payload)]() {
             protocol_->SendMcpMessage(payload);
         });
+    }
+}
+
+void Application::SetSceneContextPayload(const std::string& payload) {
+    auto apply_payload = [this, payload]() {
+        scene_context_payload_ = payload;
+        scene_context_payload_sent_ = false;
+
+        if (payload.empty() || protocol_ == nullptr || !protocol_->IsAudioChannelOpened()) {
+            return;
+        }
+
+        protocol_->SendMcpMessage(payload);
+        scene_context_payload_sent_ = true;
+    };
+
+    if (xTaskGetCurrentTaskHandle() == main_event_loop_task_handle_) {
+        apply_payload();
+    } else {
+        Schedule(std::move(apply_payload));
     }
 }
 

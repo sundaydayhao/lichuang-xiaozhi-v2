@@ -32,6 +32,7 @@ protected:
     lv_obj_t* chat_message_label_ = nullptr;
     esp_timer_handle_t preview_timer_ = nullptr;
     std::unique_ptr<LvglImage> preview_image_cached_ = nullptr;
+    bool suppress_emotion_display_ = false;
 
     void InitializeLcdThemes();
     void SetupUI();
