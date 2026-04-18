@@ -22,6 +22,76 @@ LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 LV_FONT_DECLARE(BUILTIN_ICON_FONT);
 LV_FONT_DECLARE(font_awesome_30_4);
 
+namespace {
+
+lv_obj_t* TakeValidObject(lv_obj_t*& object) {
+    if (object != nullptr && lv_obj_is_valid(object)) {
+        return object;
+    }
+
+    object = nullptr;
+    return nullptr;
+}
+
+bool IsPersistentContentOverlay(lv_obj_t* object) {
+    if (object == nullptr || !lv_obj_is_valid(object)) {
+        return false;
+    }
+
+    const void* user_data = lv_obj_get_user_data(object);
+    return user_data != nullptr &&
+           strcmp(static_cast<const char*>(user_data), PREVIEW_OVERLAY_TAG) == 0;
+}
+
+lv_obj_t* FindFirstMessageChild(lv_obj_t* parent) {
+    if (parent == nullptr || !lv_obj_is_valid(parent)) {
+        return nullptr;
+    }
+
+    const uint32_t child_count = lv_obj_get_child_cnt(parent);
+    for (uint32_t i = 0; i < child_count; ++i) {
+        lv_obj_t* child = lv_obj_get_child(parent, i);
+        if (!IsPersistentContentOverlay(child)) {
+            return child;
+        }
+    }
+
+    return nullptr;
+}
+
+lv_obj_t* FindLastMessageChild(lv_obj_t* parent) {
+    if (parent == nullptr || !lv_obj_is_valid(parent)) {
+        return nullptr;
+    }
+
+    for (int32_t i = static_cast<int32_t>(lv_obj_get_child_cnt(parent)) - 1; i >= 0; --i) {
+        lv_obj_t* child = lv_obj_get_child(parent, i);
+        if (!IsPersistentContentOverlay(child)) {
+            return child;
+        }
+    }
+
+    return nullptr;
+}
+
+uint32_t CountMessageChildren(lv_obj_t* parent) {
+    if (parent == nullptr || !lv_obj_is_valid(parent)) {
+        return 0;
+    }
+
+    uint32_t count = 0;
+    const uint32_t child_count = lv_obj_get_child_cnt(parent);
+    for (uint32_t i = 0; i < child_count; ++i) {
+        if (!IsPersistentContentOverlay(lv_obj_get_child(parent, i))) {
+            ++count;
+        }
+    }
+
+    return count;
+}
+
+}  // namespace
+
 void LcdDisplay::InitializeLcdThemes() {
     auto text_font = std::make_shared<LvglBuiltInFont>(&BUILTIN_TEXT_FONT);
     auto icon_font = std::make_shared<LvglBuiltInFont>(&BUILTIN_ICON_FONT);
@@ -449,31 +519,33 @@ void LcdDisplay::SetupUI() {
 #define  MAX_MESSAGES 20
 void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     DisplayLockGuard lock(this);
-    if (content_ == nullptr) {
+    role = role != nullptr ? role : "";
+    content = content != nullptr ? content : "";
+
+    lv_obj_t* content_obj = TakeValidObject(content_);
+    if (content_obj == nullptr) {
         return;
     }
     
     // 检查消息数量是否超过限制
-    uint32_t child_count = lv_obj_get_child_cnt(content_);
-    if (child_count >= MAX_MESSAGES) {
-        // 删除最早的消息（第一个子对象）
-        lv_obj_t* first_child = lv_obj_get_child(content_, 0);
-        lv_obj_t* last_child = lv_obj_get_child(content_, child_count - 1);
+    if (CountMessageChildren(content_obj) >= MAX_MESSAGES) {
+        lv_obj_t* first_child = FindFirstMessageChild(content_obj);
+        lv_obj_t* last_child = FindLastMessageChild(content_obj);
         if (first_child != nullptr) {
             lv_obj_del(first_child);
         }
         // Scroll to the last message immediately
-        if (last_child != nullptr) {
+        if (last_child != nullptr && last_child != first_child && lv_obj_is_valid(last_child)) {
             lv_obj_scroll_to_view_recursive(last_child, LV_ANIM_OFF);
         }
     }
     
     // 折叠系统消息（如果是系统消息，检查最后一个消息是否也是系统消息）
     if (strcmp(role, "system") == 0) {
-        if (child_count > 0) {
+        lv_obj_t* last_container = FindLastMessageChild(content_obj);
+        if (last_container != nullptr) {
             // 获取最后一个消息容器
-            lv_obj_t* last_container = lv_obj_get_child(content_, child_count - 1);
-            if (last_container != nullptr && lv_obj_get_child_cnt(last_container) > 0) {
+            if (lv_obj_get_child_cnt(last_container) > 0) {
                 // 获取容器内的气泡
                 lv_obj_t* last_bubble = lv_obj_get_child(last_container, 0);
                 if (last_bubble != nullptr) {
@@ -488,7 +560,10 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
         }
     } else {
         // 隐藏居中显示的 AI logo
-        lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_t* emoji_label = TakeValidObject(emoji_label_);
+        if (emoji_label != nullptr) {
+            lv_obj_add_flag(emoji_label, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 
     //避免出现空的消息框
@@ -500,7 +575,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     auto text_font = lvgl_theme->text_font()->font();
 
     // Create a message bubble
-    lv_obj_t* msg_bubble = lv_obj_create(content_);
+    lv_obj_t* msg_bubble = lv_obj_create(content_obj);
     lv_obj_set_style_radius(msg_bubble, 8, 0);
     lv_obj_set_scrollbar_mode(msg_bubble, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_border_width(msg_bubble, 0, 0);
@@ -592,7 +667,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     // Create a full-width container for user messages to ensure right alignment
     if (strcmp(role, "user") == 0) {
         // Create a full-width container
-        lv_obj_t* container = lv_obj_create(content_);
+        lv_obj_t* container = lv_obj_create(content_obj);
         lv_obj_set_width(container, LV_HOR_RES);
         lv_obj_set_height(container, LV_SIZE_CONTENT);
         
@@ -611,7 +686,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
         lv_obj_scroll_to_view_recursive(container, LV_ANIM_ON);
     } else if (strcmp(role, "system") == 0) {
         // 为系统消息创建全宽容器以确保居中对齐
-        lv_obj_t* container = lv_obj_create(content_);
+        lv_obj_t* container = lv_obj_create(content_obj);
         lv_obj_set_width(container, LV_HOR_RES);
         lv_obj_set_height(container, LV_SIZE_CONTENT);
         
