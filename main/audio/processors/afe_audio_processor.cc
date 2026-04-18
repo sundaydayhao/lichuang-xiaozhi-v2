@@ -1,4 +1,5 @@
 #include "afe_audio_processor.h"
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 
 #define PROCESSOR_RUNNING 0x01
@@ -69,11 +70,22 @@ void AfeAudioProcessor::Initialize(AudioCodec* codec, int frame_duration_ms, srm
     afe_iface_ = esp_afe_handle_from_config(afe_config);
     afe_data_ = afe_iface_->create_from_config(afe_config);
     
-    xTaskCreate([](void* arg) {
-        auto this_ = (AfeAudioProcessor*)arg;
+#if CONFIG_SPIRAM
+    BaseType_t ret = xTaskCreatePinnedToCoreWithCaps([](void* arg) {
+        auto this_ = static_cast<AfeAudioProcessor*>(arg);
         this_->AudioProcessorTask();
-        vTaskDelete(NULL);
-    }, "audio_communication", 4096, this, 3, NULL);
+        vTaskDelete(nullptr);
+    }, "audio_communication", 4096, this, 3, nullptr, tskNO_AFFINITY, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    BaseType_t ret = xTaskCreate([](void* arg) {
+        auto this_ = static_cast<AfeAudioProcessor*>(arg);
+        this_->AudioProcessorTask();
+        vTaskDelete(nullptr);
+    }, "audio_communication", 4096, this, 3, nullptr);
+#endif
+    if (ret != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create audio processor task");
+    }
 }
 
 AfeAudioProcessor::~AfeAudioProcessor() {

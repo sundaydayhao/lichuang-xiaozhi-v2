@@ -1,6 +1,7 @@
 #include "afe_wake_word.h"
 #include "audio_service.h"
 
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <sstream>
 
@@ -81,11 +82,23 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
     afe_iface_ = esp_afe_handle_from_config(afe_config);
     afe_data_ = afe_iface_->create_from_config(afe_config);
 
-    xTaskCreate([](void* arg) {
-        auto this_ = (AfeWakeWord*)arg;
+#if CONFIG_SPIRAM
+    BaseType_t ret = xTaskCreatePinnedToCoreWithCaps([](void* arg) {
+        auto this_ = static_cast<AfeWakeWord*>(arg);
         this_->AudioDetectionTask();
-        vTaskDelete(NULL);
+        vTaskDelete(nullptr);
+    }, "audio_detection", 4096, this, 3, nullptr, tskNO_AFFINITY, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    BaseType_t ret = xTaskCreate([](void* arg) {
+        auto this_ = static_cast<AfeWakeWord*>(arg);
+        this_->AudioDetectionTask();
+        vTaskDelete(nullptr);
     }, "audio_detection", 4096, this, 3, nullptr);
+#endif
+    if (ret != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create audio detection task");
+        return false;
+    }
 
     return true;
 }

@@ -884,6 +884,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         }
         SuspendAudioForRemoteSelfie();
         auto& ble_hid = BleHid::GetInstance();
+        ble_hid.SetScreenActive(true);
         const bool ble_ready = ble_hid.Initialize();
         ble_hid.OnConnectionStateChanged([this](bool connected) {
             UpdateCameraBleStatus(connected);
@@ -916,7 +917,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     }
 
     if (lv_screen_active() == camera_screen_) {
-        BleHid::GetInstance().Deinitialize();
+        BleHid::GetInstance().SetScreenActive(false);
         ResumeAudioAfterRemoteSelfie();
     }
 
@@ -947,7 +948,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 
 void UiLcdDisplay::ReturnToMainMenu() {
     if (lv_screen_active() == camera_screen_) {
-        BleHid::GetInstance().Deinitialize();
+        BleHid::GetInstance().SetScreenActive(false);
         ResumeAudioAfterRemoteSelfie();
     }
 

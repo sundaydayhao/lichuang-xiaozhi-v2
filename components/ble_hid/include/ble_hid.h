@@ -26,6 +26,7 @@ public:
     bool SendArrowDown();
     bool SendArrowLeft();
     bool SendArrowRight();
+    void SetScreenActive(bool active);
 
     bool IsConnected() const { return connected_ && sec_conn_; }
 
@@ -49,6 +50,7 @@ private:
     void DeinitializeNimble();
     bool ConfigureAdvertising();
     bool StartAdvertising();
+    void StopAdvertising();
 
     bool SendInputReport(uint8_t report_id, uint8_t* data, size_t length);
     bool SendConsumerUsage(uint16_t usage);
@@ -59,6 +61,7 @@ private:
     bool sec_conn_ = false;
     bool nimble_initialized_ = false;
     bool host_task_started_ = false;
+    bool screen_active_ = false;
     std::function<void(bool connected)> connection_state_callback_ = nullptr;
     esp_hidd_dev_t* hid_dev_ = nullptr;
 

@@ -4,6 +4,7 @@
 
 #include <esp_bt.h>
 #include <esp_hidd.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -30,6 +31,41 @@ constexpr uint8_t kKeycodeRightArrow = 0x4F;
 constexpr uint8_t kKeycodeLeftArrow = 0x50;
 constexpr uint8_t kKeycodeDownArrow = 0x51;
 constexpr uint8_t kKeycodeUpArrow = 0x52;
+
+struct HeapSnapshot {
+    size_t total_free = 0;
+    size_t internal_free = 0;
+    size_t spiram_free = 0;
+    size_t largest_internal_block = 0;
+};
+
+HeapSnapshot CaptureHeapSnapshot() {
+    return {
+        .total_free = heap_caps_get_free_size(MALLOC_CAP_8BIT),
+        .internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+        .spiram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+        .largest_internal_block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+    };
+}
+
+void LogHeapSnapshot(const char* stage, const HeapSnapshot& snapshot) {
+    ESP_LOGI(kTag,
+        "%s heap: total=%u, internal=%u, spiram=%u, largest_internal=%u",
+        stage,
+        static_cast<unsigned>(snapshot.total_free),
+        static_cast<unsigned>(snapshot.internal_free),
+        static_cast<unsigned>(snapshot.spiram_free),
+        static_cast<unsigned>(snapshot.largest_internal_block));
+}
+
+void LogHeapDelta(const char* stage, const HeapSnapshot& before, const HeapSnapshot& after) {
+    ESP_LOGI(kTag,
+        "%s delta: total=%d, internal=%d, spiram=%d",
+        stage,
+        static_cast<int>(before.total_free - after.total_free),
+        static_cast<int>(before.internal_free - after.internal_free),
+        static_cast<int>(before.spiram_free - after.spiram_free));
+}
 
 #if CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED && CONFIG_BT_NIMBLE_HID_SERVICE
 constexpr uint16_t kHidServiceUuid = 0x1812;
@@ -162,7 +198,9 @@ void BleHid::HiddEventCallback(void* /*handler_arg*/, esp_event_base_t event_bas
     case ESP_HIDD_DISCONNECT_EVENT:
         ESP_LOGI(kTag, "BLE HID disconnected, reason=%d", param ? param->disconnect.reason : -1);
         self.HandleDisconnected();
-        self.StartAdvertising();
+        if (self.screen_active_) {
+            self.StartAdvertising();
+        }
         break;
 
     default:
@@ -274,10 +312,27 @@ bool BleHid::StartAdvertising() {
     return true;
 }
 
+void BleHid::StopAdvertising() {
+    if (ble_gap_adv_active()) {
+        int rc = ble_gap_adv_stop();
+        if (rc != 0 && rc != BLE_HS_EALREADY) {
+            ESP_LOGW(kTag, "Stop advertising failed: %d", rc);
+        }
+    }
+}
+
 bool BleHid::InitializeImpl() {
+    const HeapSnapshot before_init = CaptureHeapSnapshot();
+    LogHeapSnapshot("Before BLE HID init", before_init);
+
     if (!InitializeNimble()) {
+        LogHeapSnapshot("BLE HID init failed after NimBLE init", CaptureHeapSnapshot());
         return false;
     }
+
+    const HeapSnapshot after_nimble = CaptureHeapSnapshot();
+    LogHeapSnapshot("After NimBLE init", after_nimble);
+    LogHeapDelta("NimBLE stack usage", before_init, after_nimble);
 
     ConfigureAdvertising();
 
@@ -285,14 +340,25 @@ bool BleHid::InitializeImpl() {
     esp_err_t ret = esp_hidd_dev_init(&config, ESP_HID_TRANSPORT_BLE, HiddEventCallback, &hid_dev_);
     if (ret != ESP_OK) {
         ESP_LOGE(kTag, "esp_hidd_dev_init failed: %s", esp_err_to_name(ret));
+        LogHeapSnapshot("BLE HID init failed after esp_hidd_dev_init", CaptureHeapSnapshot());
         return false;
     }
+
+    const HeapSnapshot after_hid = CaptureHeapSnapshot();
+    LogHeapSnapshot("After esp_hidd_dev_init", after_hid);
+    LogHeapDelta("BLE HID profile usage", after_nimble, after_hid);
 
     ret = esp_nimble_enable(reinterpret_cast<void*>(BleHidHostTask));
     if (ret != ESP_OK) {
         ESP_LOGE(kTag, "esp_nimble_enable failed: %s", esp_err_to_name(ret));
+        LogHeapSnapshot("BLE HID init failed after esp_nimble_enable", CaptureHeapSnapshot());
         return false;
     }
+
+    const HeapSnapshot after_enable = CaptureHeapSnapshot();
+    LogHeapSnapshot("After esp_nimble_enable", after_enable);
+    LogHeapDelta("NimBLE host task usage", after_hid, after_enable);
+    LogHeapDelta("BLE stack total usage", before_init, after_enable);
 
     host_task_started_ = true;
     return true;
@@ -335,6 +401,24 @@ void BleHid::Deinitialize() {
     initialized_ = false;
     connected_ = false;
     sec_conn_ = false;
+}
+
+void BleHid::SetScreenActive(bool active) {
+    screen_active_ = active;
+
+#if CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ENABLED && CONFIG_BT_NIMBLE_HID_SERVICE
+    if (!initialized_) {
+        return;
+    }
+
+    if (active) {
+        if (!IsConnected()) {
+            StartAdvertising();
+        }
+    } else if (!IsConnected()) {
+        StopAdvertising();
+    }
+#endif
 }
 
 bool BleHid::SendInputReport(uint8_t report_id, uint8_t* data, size_t length) {
