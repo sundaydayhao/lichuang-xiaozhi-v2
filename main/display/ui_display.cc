@@ -295,7 +295,7 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
     const char* scene = nullptr;
     const char* mode = nullptr;
     std::string instructions;
-    const char* language = Lang::CODE;
+    std::string language = GetSelectedLanguageCode();
 
     switch (option_id) {
     case kEncyclopediaOptionId:
@@ -375,20 +375,6 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
         << "\"mode\":\"" << mode << "\","
         << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
     return oss.str();
-}
-
-const char* UiLcdDisplay::GetSettingsTitle() const {
-    return "设置";
-}
-
-const char* UiLcdDisplay::GetSettingsItemName(int index) const {
-    static const char* kTexts[kSettingsItemCount] = {
-        "WiFi/4G 切换",
-        "服务器切换",
-        "语言切换",
-        "关于本机",
-    };
-    return (index >= 0 && index < static_cast<int>(kSettingsItemCount)) ? kTexts[index] : "";
 }
 
 const char* UiLcdDisplay::GetAboutTitle() const {
@@ -1086,81 +1072,6 @@ void UiLcdDisplay::InitializeGallery() {
     CreateBackButton(gallery_screen_, &gallery_back_button_data_);
 }
 
-void UiLcdDisplay::InitializeSettingsScreen() {
-    DisplayLockGuard lock(this);
-
-    if (settings_screen_ != nullptr) {
-        return;
-    }
-
-    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
-
-    settings_screen_ = lv_obj_create(nullptr);
-    lv_obj_set_style_bg_color(settings_screen_, lv_color_white(), 0);
-    lv_obj_set_style_border_width(settings_screen_, 0, 0);
-    lv_obj_set_style_pad_all(settings_screen_, 0, 0);
-    lv_obj_set_scrollbar_mode(settings_screen_, LV_SCROLLBAR_MODE_OFF);
-
-    settings_title_label_ = lv_label_create(settings_screen_);
-    lv_label_set_text(settings_title_label_, GetSettingsTitle());
-    lv_obj_align(settings_title_label_, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_set_style_text_font(settings_title_label_, lvgl_theme->text_font()->font(), 0);
-    lv_obj_set_style_text_color(settings_title_label_, lv_color_black(), 0);
-
-    lv_obj_t* content = lv_obj_create(settings_screen_);
-    lv_obj_set_size(content, LV_HOR_RES, LV_VER_RES - 84);
-    lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 84);
-    lv_obj_set_style_bg_color(content, lv_color_white(), 0);
-    lv_obj_set_style_border_width(content, 0, 0);
-    lv_obj_set_style_pad_all(content, 0, 0);
-    lv_obj_set_scroll_dir(content, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_OFF);
-
-    const int item_height = 46;
-    for (int i = 0; i < static_cast<int>(kSettingsItemCount); ++i) {
-        lv_obj_t* item = lv_btn_create(content);
-        lv_obj_set_size(item, LV_HOR_RES, item_height);
-        lv_obj_set_pos(item, 0, i * item_height);
-        lv_obj_set_style_radius(item, 0, 0);
-        lv_obj_set_style_bg_color(item, lv_color_white(), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(item, 0, 0);
-        lv_obj_set_style_shadow_width(item, 0, 0);
-        lv_obj_set_style_pad_left(item, 16, 0);
-        lv_obj_set_style_pad_right(item, 16, 0);
-
-        settings_item_name_labels_[i] = lv_label_create(item);
-        lv_label_set_text(settings_item_name_labels_[i], GetSettingsItemName(i));
-        lv_obj_align(settings_item_name_labels_[i], LV_ALIGN_LEFT_MID, 0, 0);
-        lv_obj_set_style_text_color(settings_item_name_labels_[i], lv_color_black(), 0);
-        lv_obj_set_style_text_font(settings_item_name_labels_[i], lvgl_theme->text_font()->font(), 0);
-
-        lv_obj_t* arrow_label = lv_label_create(item);
-        lv_label_set_text(arrow_label, ">");
-        lv_obj_align(arrow_label, LV_ALIGN_RIGHT_MID, 0, 0);
-        lv_obj_set_style_text_color(arrow_label, lv_color_hex(0xB0B0B0), 0);
-        lv_obj_set_style_text_font(arrow_label, lvgl_theme->text_font()->font(), 0);
-
-        settings_item_data_[i] = SettingsItemData{this, i};
-        lv_obj_set_user_data(item, &settings_item_data_[i]);
-        lv_obj_add_event_cb(item, OnSettingsItemClicked, LV_EVENT_CLICKED, nullptr);
-
-        if (i < static_cast<int>(kSettingsItemCount) - 1) {
-            lv_obj_t* separator = lv_obj_create(content);
-            lv_obj_set_size(separator, LV_HOR_RES - 32, 1);
-            lv_obj_set_pos(separator, 16, (i + 1) * item_height);
-            lv_obj_set_style_bg_color(separator, lv_color_hex(0xD9D9D9), 0);
-            lv_obj_set_style_bg_opa(separator, LV_OPA_COVER, 0);
-            lv_obj_set_style_border_width(separator, 0, 0);
-            lv_obj_set_style_radius(separator, 0, 0);
-            lv_obj_clear_flag(separator, LV_OBJ_FLAG_CLICKABLE);
-        }
-    }
-
-    settings_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
-    CreateBackButton(settings_screen_, &settings_back_button_data_);
-}
-
 void UiLcdDisplay::InitializeAboutScreen() {
     DisplayLockGuard lock(this);
 
@@ -1353,16 +1264,6 @@ void UiLcdDisplay::StopCameraPreview() {
     if (camera_preview_timer_ != nullptr) {
         esp_timer_stop(camera_preview_timer_);
     }
-}
-
-void UiLcdDisplay::ShowSettingsScreen() {
-    if (settings_screen_ == nullptr) {
-        InitializeSettingsScreen();
-    }
-
-    DisplayLockGuard lock(this);
-    lv_screen_load(settings_screen_);
-    MoveStatusBarToScreen(settings_screen_);
 }
 
 void UiLcdDisplay::ShowAboutScreen() {
@@ -1997,23 +1898,6 @@ void UiLcdDisplay::OnCameraActionButtonClicked(lv_event_t* e) {
     if (display != nullptr) {
         display->ExecuteCameraAction();
     }
-}
-
-void UiLcdDisplay::OnSettingsItemClicked(lv_event_t* e) {
-    auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
-    auto* data = static_cast<SettingsItemData*>(lv_obj_get_user_data(target));
-    if (data == nullptr || data->display == nullptr) {
-        return;
-    }
-
-    if (data->item_id == 3) {
-        data->display->ShowAboutScreen();
-        return;
-    }
-
-    std::string notification = data->display->GetSettingsItemName(data->item_id);
-    notification += " 开发中";
-    data->display->ShowNotification(notification.c_str(), 1200);
 }
 
 void UiLcdDisplay::OnBackButtonClicked(lv_event_t* e) {

@@ -55,6 +55,11 @@ std::unique_ptr<Http> Ota::SetupHttp() {
     auto network = board.GetNetwork();
     auto http = network->CreateHttp(0);
     auto user_agent = SystemInfo::GetUserAgent();
+    Settings ui_settings("ui", false);
+    std::string language = ui_settings.GetString("language");
+    if (language != "zh-CN" && language != "zh-TW" && language != "en-US") {
+        language = Lang::CODE;
+    }
     http->SetHeader("Activation-Version", has_serial_number_ ? "2" : "1");
     http->SetHeader("Device-Id", SystemInfo::GetMacAddress().c_str());
     http->SetHeader("Client-Id", board.GetUuid());
@@ -63,7 +68,7 @@ std::unique_ptr<Http> Ota::SetupHttp() {
         ESP_LOGI(TAG, "Setup HTTP, User-Agent: %s, Serial-Number: %s", user_agent.c_str(), serial_number_.c_str());
     }
     http->SetHeader("User-Agent", user_agent);
-    http->SetHeader("Accept-Language", Lang::CODE);
+    http->SetHeader("Accept-Language", language);
     http->SetHeader("Content-Type", "application/json");
 
     return http;

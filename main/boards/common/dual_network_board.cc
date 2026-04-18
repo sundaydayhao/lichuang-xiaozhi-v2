@@ -61,14 +61,25 @@ void DualNetworkBoard::InitializeCurrentBoard() {
 }
 
 void DualNetworkBoard::SwitchNetworkType() {
+    const NetworkType target_type = (network_type_ == NetworkType::WIFI) ? NetworkType::ML307 : NetworkType::WIFI;
+    SwitchNetworkType(target_type);
+}
+
+void DualNetworkBoard::SwitchNetworkType(NetworkType type) {
+    if (type == network_type_) {
+        return;
+    }
+
+    network_type_ = type;
+    SaveNetworkTypeToSettings(type);
+
     auto display = GetDisplay();
-    if (network_type_ == NetworkType::WIFI) {    
-        SaveNetworkTypeToSettings(NetworkType::ML307);
+    if (type == NetworkType::ML307) {
         display->ShowNotification(Lang::Strings::SWITCH_TO_4G_NETWORK);
     } else {
-        SaveNetworkTypeToSettings(NetworkType::WIFI);
         display->ShowNotification(Lang::Strings::SWITCH_TO_WIFI_NETWORK);
     }
+
     vTaskDelay(pdMS_TO_TICKS(1000));
     auto& app = Application::GetInstance();
     app.Reboot();

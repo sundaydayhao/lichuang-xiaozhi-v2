@@ -8,6 +8,7 @@
 #include "lamp_controller.h"
 #include "led/single_led.h"
 #include "esp32_camera.h"
+#include "settings.h"
 
 #if defined(TOUCH_CONTROLLER_AXS5106)
 #include <esp_lcd_touch_axs5106.h>
@@ -365,7 +366,12 @@ private:
         application.SetDeviceState(kDeviceStateWifiConfiguring);
 
         auto& wifi_ap = WifiConfigurationAp::GetInstance();
-        wifi_ap.SetLanguage(Lang::CODE);
+        Settings ui_settings("ui", false);
+        std::string language = ui_settings.GetString("language");
+        if (language != "zh-CN" && language != "zh-TW" && language != "en-US") {
+            language = Lang::CODE;
+        }
+        wifi_ap.SetLanguage(language.c_str());
         wifi_ap.SetSsidPrefix("Xiaozhi");
         wifi_ap.Start();
 

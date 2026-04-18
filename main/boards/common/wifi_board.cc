@@ -37,7 +37,12 @@ void WifiBoard::EnterWifiConfigMode() {
     application.SetDeviceState(kDeviceStateWifiConfiguring);
 
     auto& wifi_ap = WifiConfigurationAp::GetInstance();
-    wifi_ap.SetLanguage(Lang::CODE);
+    Settings ui_settings("ui", false);
+    std::string language = ui_settings.GetString("language");
+    if (language != "zh-CN" && language != "zh-TW" && language != "en-US") {
+        language = Lang::CODE;
+    }
+    wifi_ap.SetLanguage(language.c_str());
     wifi_ap.SetSsidPrefix("Xiaozhi");
     wifi_ap.Start();
 

@@ -39,6 +39,7 @@ public:
  
     // 切换网络类型
     void SwitchNetworkType();
+    void SwitchNetworkType(NetworkType type);
     
     // 获取当前网络类型
     NetworkType GetNetworkType() const { return network_type_; }

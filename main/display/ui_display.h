@@ -19,6 +19,9 @@ class UiLcdDisplay : public SpiLcdDisplay {
 public:
     static constexpr size_t kMenuItemCount = 12;
     static constexpr size_t kSettingsItemCount = 4;
+    static constexpr size_t kNetworkSwitchOptionCount = 2;
+    static constexpr size_t kServerSwitchOptionCount = 2;
+    static constexpr size_t kLanguageSwitchOptionCount = 3;
     static constexpr size_t kAboutInfoItemCount = 7;
 
     UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
@@ -56,6 +59,21 @@ private:
     struct BackButtonData {
         UiLcdDisplay* display = nullptr;
         int target = 0;
+    };
+
+    struct NetworkSwitchOptionData {
+        UiLcdDisplay* display = nullptr;
+        int option_id = 0;
+    };
+
+    struct ServerSwitchOptionData {
+        UiLcdDisplay* display = nullptr;
+        int option_id = 0;
+    };
+
+    struct LanguageSwitchOptionData {
+        UiLcdDisplay* display = nullptr;
+        int option_id = 0;
     };
 
     struct WordDictationWord {
@@ -135,6 +153,31 @@ private:
     std::array<lv_obj_t*, kSettingsItemCount> settings_item_name_labels_ = {};
     std::array<SettingsItemData, kSettingsItemCount> settings_item_data_ = {};
     BackButtonData settings_back_button_data_ = {};
+
+    lv_obj_t* network_switch_screen_ = nullptr;
+    lv_obj_t* network_switch_title_label_ = nullptr;
+    lv_obj_t* network_switch_hint_label_ = nullptr;
+    std::array<lv_obj_t*, kNetworkSwitchOptionCount> network_switch_option_buttons_ = {};
+    std::array<lv_obj_t*, kNetworkSwitchOptionCount> network_switch_option_labels_ = {};
+    std::array<lv_obj_t*, kNetworkSwitchOptionCount> network_switch_option_state_labels_ = {};
+    std::array<NetworkSwitchOptionData, kNetworkSwitchOptionCount> network_switch_option_data_ = {};
+    BackButtonData network_switch_back_button_data_ = {};
+
+    lv_obj_t* server_switch_screen_ = nullptr;
+    lv_obj_t* server_switch_title_label_ = nullptr;
+    std::array<lv_obj_t*, kServerSwitchOptionCount> server_switch_option_buttons_ = {};
+    std::array<lv_obj_t*, kServerSwitchOptionCount> server_switch_option_labels_ = {};
+    std::array<lv_obj_t*, kServerSwitchOptionCount> server_switch_option_state_labels_ = {};
+    std::array<ServerSwitchOptionData, kServerSwitchOptionCount> server_switch_option_data_ = {};
+    BackButtonData server_switch_back_button_data_ = {};
+
+    lv_obj_t* language_switch_screen_ = nullptr;
+    lv_obj_t* language_switch_title_label_ = nullptr;
+    std::array<lv_obj_t*, kLanguageSwitchOptionCount> language_switch_option_buttons_ = {};
+    std::array<lv_obj_t*, kLanguageSwitchOptionCount> language_switch_option_labels_ = {};
+    std::array<lv_obj_t*, kLanguageSwitchOptionCount> language_switch_option_state_labels_ = {};
+    std::array<LanguageSwitchOptionData, kLanguageSwitchOptionCount> language_switch_option_data_ = {};
+    BackButtonData language_switch_back_button_data_ = {};
 
     lv_obj_t* about_screen_ = nullptr;
     lv_obj_t* about_title_label_ = nullptr;
@@ -234,6 +277,9 @@ private:
     void InitializeCameraScreen();
     void InitializeGallery();
     void InitializeSettingsScreen();
+    void InitializeNetworkSwitchScreen();
+    void InitializeServerSwitchScreen();
+    void InitializeLanguageSwitchScreen();
     void InitializeAboutScreen();
     void InitializeWordDictationSupport();
     void DeinitializeWordDictationSupport();
@@ -262,6 +308,9 @@ private:
     void ReturnToMainMenu();
     void ReturnToCameraScreen();
     void ShowSettingsScreen();
+    void ShowNetworkSwitchScreen();
+    void ShowServerSwitchScreen();
+    void ShowLanguageSwitchScreen();
     void ShowAboutScreen();
     void SetCameraMode(CameraMode mode);
     void UpdateCameraModeDisplay();
@@ -325,8 +374,21 @@ private:
     void RefreshMenuIconImages();
     const char* GetSettingsTitle() const;
     const char* GetSettingsItemName(int index) const;
+    const char* GetNetworkSwitchOptionName(int index) const;
+    const char* GetServerSwitchOptionName(int index) const;
+    const char* GetLanguageSwitchOptionName(int index) const;
     const char* GetAboutTitle() const;
     const char* GetAboutInfoTitle(int index) const;
+    void RefreshNetworkSwitchScreen();
+    int GetCurrentNetworkSwitchOptionIndex() const;
+    void SelectNetworkSwitchOption(int index);
+    void RefreshServerSwitchScreen();
+    int GetCurrentServerSwitchOptionIndex() const;
+    void SelectServerSwitchOption(int index);
+    void RefreshLanguageSwitchScreen();
+    int GetCurrentLanguageSwitchOptionIndex() const;
+    void SelectLanguageSwitchOption(int index);
+    std::string GetSelectedLanguageCode() const;
     void RefreshAboutScreenTexts();
     std::string GetFirmwareVersionForDisplay() const;
     std::string GetActivationCodeForDisplay() const;
@@ -359,6 +421,9 @@ private:
     static void OnCameraModeButtonClicked(lv_event_t* e);
     static void OnCameraActionButtonClicked(lv_event_t* e);
     static void OnSettingsItemClicked(lv_event_t* e);
+    static void OnNetworkSwitchOptionClicked(lv_event_t* e);
+    static void OnServerSwitchOptionClicked(lv_event_t* e);
+    static void OnLanguageSwitchOptionClicked(lv_event_t* e);
     static void OnBackButtonClicked(lv_event_t* e);
     static void OnWordDictationListItemClicked(lv_event_t* e);
     static void OnWordDictationActionClicked(lv_event_t* e);
