@@ -54,6 +54,8 @@ public:
     void ToggleChatState();
     void StartListening();
     void StopListening();
+    void SuspendAudioForFeature();
+    void ResumeAudioAfterFeature();
     void Reboot();
     void WakeWordInvoke(const std::string& wake_word);
     bool UpgradeFirmware(Ota& ota, const std::string& url = "");
@@ -85,8 +87,10 @@ private:
     int clock_ticks_ = 0;
     TaskHandle_t check_new_version_task_handle_ = nullptr;
     TaskHandle_t main_event_loop_task_handle_ = nullptr;
+    bool audio_service_suspended_for_feature_ = false;
 
     void OnWakeWordDetected();
+    void ApplyAudioBehaviorForState(DeviceState state);
     void CheckNewVersion(Ota& ota);
     void CheckAssetsVersion();
     void ShowActivationCode(const std::string& code, const std::string& message);

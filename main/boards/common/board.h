@@ -44,6 +44,7 @@ public:
     virtual bool GetTemperature(float& esp32temp);
     virtual Display* GetDisplay();
     virtual Camera* GetCamera();
+    virtual void ConfigureCameraExplain(const std::string& url, const std::string& token);
     virtual NetworkInterface* GetNetwork() = 0;
     virtual void StartNetwork() = 0;
     virtual const char* GetNetworkStateIcon() = 0;

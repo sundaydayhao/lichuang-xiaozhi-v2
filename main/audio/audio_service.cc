@@ -1,5 +1,6 @@
 #include "audio_service.h"
 #include <esp_log.h>
+#include <esp_heap_caps.h>
 #include <cstring>
 
 #if CONFIG_USE_AUDIO_PROCESSOR
@@ -13,6 +14,12 @@
 
 #define TAG "AudioService"
 
+namespace {
+
+constexpr size_t kOpusCodecTaskStackSize = 2048 * 13;
+
+}
+
 
 AudioService::AudioService() {
     event_group_ = xEventGroupCreate();
@@ -21,6 +28,10 @@ AudioService::AudioService() {
 AudioService::~AudioService() {
     if (event_group_ != nullptr) {
         vEventGroupDelete(event_group_);
+    }
+    if (opus_codec_task_stack_ != nullptr) {
+        heap_caps_free(opus_codec_task_stack_);
+        opus_codec_task_stack_ = nullptr;
     }
 }
 
@@ -106,11 +117,27 @@ void AudioService::Start() {
 #endif
 
     /* Start the opus codec task */
-    xTaskCreate([](void* arg) {
-        AudioService* audio_service = (AudioService*)arg;
-        audio_service->OpusCodecTask();
-        vTaskDelete(NULL);
-    }, "opus_codec", 2048 * 13, this, 2, &opus_codec_task_handle_);
+    if (opus_codec_task_stack_ == nullptr) {
+        opus_codec_task_stack_ = static_cast<StackType_t*>(heap_caps_malloc(
+            kOpusCodecTaskStackSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        if (opus_codec_task_stack_ == nullptr) {
+            ESP_LOGW(TAG, "Failed to allocate Opus codec task stack in PSRAM, fallback to internal SRAM");
+        }
+    }
+
+    if (opus_codec_task_stack_ != nullptr) {
+        opus_codec_task_handle_ = xTaskCreateStatic([](void* arg) {
+            AudioService* audio_service = (AudioService*)arg;
+            audio_service->OpusCodecTask();
+            vTaskDelete(NULL);
+        }, "opus_codec", kOpusCodecTaskStackSize, this, 2, opus_codec_task_stack_, &opus_codec_task_buffer_);
+    } else {
+        xTaskCreate([](void* arg) {
+            AudioService* audio_service = (AudioService*)arg;
+            audio_service->OpusCodecTask();
+            vTaskDelete(NULL);
+        }, "opus_codec", kOpusCodecTaskStackSize, this, 2, &opus_codec_task_handle_);
+    }
 }
 
 void AudioService::Stop() {

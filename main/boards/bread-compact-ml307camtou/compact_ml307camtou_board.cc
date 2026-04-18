@@ -24,6 +24,7 @@
 #include <nvs_flash.h>
 #include <wifi_configuration_ap.h>
 #include <wifi_station.h>
+#include <mutex>
 
 #include "lamp_G.h"
 #include "s620.h"
@@ -77,6 +78,9 @@ private:
     i2c_master_bus_handle_t i2c_bus_ = nullptr;
     S620* s620_ = nullptr;
     Esp32Camera* camera_ = nullptr;
+    std::mutex camera_mutex_;
+    std::string pending_camera_explain_url_;
+    std::string pending_camera_explain_token_;
 
     void SetML307Enable(bool enable) {
         if (ML307_EN_PIN != GPIO_NUM_NC) {
@@ -226,6 +230,9 @@ private:
     }
 
     void InitializeCamera() {
+        if (camera_ != nullptr) {
+            return;
+        }
         camera_config_t config = {};
         config.pin_d0 = CAMERA_PIN_D0;
         config.pin_d1 = CAMERA_PIN_D1;
@@ -252,7 +259,12 @@ private:
         config.fb_location = CAMERA_FB_IN_PSRAM;
         config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
         camera_ = new Esp32Camera(config);
-        camera_->SetHMirror(false);
+        if (camera_ != nullptr) {
+            camera_->SetHMirror(false);
+            if (!pending_camera_explain_url_.empty()) {
+                camera_->SetExplainUrl(pending_camera_explain_url_, pending_camera_explain_token_);
+            }
+        }
     }
 
     void InitializeButtons() {
@@ -393,10 +405,10 @@ public:
         InitializeTouch();
         InitializeButtons();
         InitializeTools();
-        InitializeCamera();
         display_->SetCameraPreviewCallback([this]() {
-            if (camera_ != nullptr) {
-                camera_->Capture();
+            auto* camera = GetCamera();
+            if (camera != nullptr) {
+                camera->Capture();
             }
         });
         MountStorage();
@@ -415,6 +427,7 @@ public:
     }
 
     ~CompactMl307ctBoard() override {
+        delete camera_;
         delete s620_;
         delete display_;
     }
@@ -474,7 +487,20 @@ public:
     }
 
     Camera* GetCamera() override {
+        std::lock_guard<std::mutex> lock(camera_mutex_);
+        if (camera_ == nullptr) {
+            InitializeCamera();
+        }
         return camera_;
+    }
+
+    void ConfigureCameraExplain(const std::string& url, const std::string& token) override {
+        std::lock_guard<std::mutex> lock(camera_mutex_);
+        pending_camera_explain_url_ = url;
+        pending_camera_explain_token_ = token;
+        if (camera_ != nullptr) {
+            camera_->SetExplainUrl(url, token);
+        }
     }
 
     Backlight* GetBacklight() override {

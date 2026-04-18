@@ -1,8 +1,26 @@
 #include "esp_mqtt.h"
 #include <esp_crt_bundle.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 
 static const char *TAG = "esp_mqtt";
+
+namespace {
+
+constexpr int kMqttTaskStackSize = 4096;
+constexpr int kMqttBufferSize = 512;
+constexpr int kMqttOutboxLimit = 1024;
+
+void LogHeapSnapshot(const char* stage) {
+    ESP_LOGI(TAG, "%s internal free=%u largest=%u psram free=%u largest=%u",
+             stage,
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)));
+}
+
+}
 
 EspMqtt::EspMqtt() {
     event_group_handle_ = xEventGroupCreate();
@@ -33,12 +51,29 @@ bool EspMqtt::Connect(const std::string broker_address, int broker_port, const s
     mqtt_config.credentials.username = username.c_str();
     mqtt_config.credentials.authentication.password = password.c_str();
     mqtt_config.session.keepalive = keep_alive_seconds_;
+    mqtt_config.task.stack_size = kMqttTaskStackSize;
+    mqtt_config.buffer.size = kMqttBufferSize;
+    mqtt_config.buffer.out_size = kMqttBufferSize;
+    mqtt_config.outbox.limit = kMqttOutboxLimit;
 
+    LogHeapSnapshot("Before esp_mqtt_client_init");
     mqtt_client_handle_ = esp_mqtt_client_init(&mqtt_config);
+    if (mqtt_client_handle_ == nullptr) {
+        LogHeapSnapshot("esp_mqtt_client_init failed");
+        ESP_LOGE(TAG, "Failed to initialize MQTT client");
+        return false;
+    }
     esp_mqtt_client_register_event(mqtt_client_handle_, MQTT_EVENT_ANY, [](void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
         ((EspMqtt*)handler_args)->MqttEventCallback(base, event_id, event_data);
     }, this);
-    esp_mqtt_client_start(mqtt_client_handle_);
+    esp_err_t ret = esp_mqtt_client_start(mqtt_client_handle_);
+    if (ret != ESP_OK) {
+        LogHeapSnapshot("esp_mqtt_client_start failed");
+        ESP_LOGE(TAG, "Failed to start MQTT client: %s (%d)", esp_err_to_name(ret), ret);
+        esp_mqtt_client_destroy(mqtt_client_handle_);
+        mqtt_client_handle_ = nullptr;
+        return false;
+    }
 
     auto bits = xEventGroupWaitBits(event_group_handle_, MQTT_CONNECTED_EVENT | MQTT_DISCONNECTED_EVENT | MQTT_ERROR_EVENT,
         pdTRUE, pdFALSE, pdMS_TO_TICKS(MQTT_CONNECT_TIMEOUT_MS));

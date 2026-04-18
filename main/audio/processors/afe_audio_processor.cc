@@ -1,7 +1,9 @@
 #include "afe_audio_processor.h"
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 
 #define PROCESSOR_RUNNING 0x01
+#define AUDIO_PROCESSOR_TASK_STACK_SIZE 4096
 
 #define TAG "AfeAudioProcessor"
 
@@ -33,11 +35,19 @@ void AfeAudioProcessor::Initialize(AudioCodec* codec, int frame_duration_ms, srm
     } else {
         models = models_list;
     }
+    if (models == nullptr) {
+        ESP_LOGE(TAG, "Failed to initialize SR models");
+        return;
+    }
 
     char* ns_model_name = esp_srmodel_filter(models, ESP_NSNET_PREFIX, NULL);
     char* vad_model_name = esp_srmodel_filter(models, ESP_VADN_PREFIX, NULL);
     
     afe_config_t* afe_config = afe_config_init(input_format.c_str(), NULL, AFE_TYPE_VC, AFE_MODE_LOW_COST);
+    if (afe_config == nullptr) {
+        ESP_LOGE(TAG, "afe_config_init failed");
+        return;
+    }
     afe_config->aec_mode = AEC_MODE_VOIP_HIGH_PERF;
     afe_config->vad_mode = VAD_MODE_0;
     afe_config->vad_min_noise_ms = 100;
@@ -66,19 +76,69 @@ void AfeAudioProcessor::Initialize(AudioCodec* codec, int frame_duration_ms, srm
     afe_config->vad_init = true;
 #endif
 
+    afe_config = afe_config_check(afe_config);
+    if (afe_config == nullptr) {
+        ESP_LOGE(TAG, "afe_config_check failed");
+        return;
+    }
+
     afe_iface_ = esp_afe_handle_from_config(afe_config);
+    if (afe_iface_ == nullptr) {
+        ESP_LOGE(TAG, "esp_afe_handle_from_config failed");
+        return;
+    }
+
     afe_data_ = afe_iface_->create_from_config(afe_config);
-    
-    xTaskCreate([](void* arg) {
+    if (afe_data_ == nullptr) {
+        ESP_LOGE(TAG, "AFE create_from_config failed");
+        return;
+    }
+
+    if (audio_processor_task_stack_ == nullptr) {
+        audio_processor_task_stack_ = static_cast<StackType_t*>(
+            heap_caps_malloc(AUDIO_PROCESSOR_TASK_STACK_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    }
+    if (audio_processor_task_buffer_ == nullptr) {
+        audio_processor_task_buffer_ = static_cast<StaticTask_t*>(
+            heap_caps_malloc(sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    }
+    if (audio_processor_task_stack_ == nullptr || audio_processor_task_buffer_ == nullptr) {
+        ESP_LOGE(TAG,
+            "Failed to allocate audio processor task memory, internal free: %u, internal largest: %u, psram free: %u",
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+        afe_iface_->destroy(afe_data_);
+        afe_data_ = nullptr;
+        return;
+    }
+
+    audio_processor_task_ = xTaskCreateStaticPinnedToCore([](void* arg) {
         auto this_ = (AfeAudioProcessor*)arg;
         this_->AudioProcessorTask();
         vTaskDelete(NULL);
-    }, "audio_communication", 4096, this, 3, NULL);
+    }, "audio_communication", AUDIO_PROCESSOR_TASK_STACK_SIZE / sizeof(StackType_t), this, 3,
+        audio_processor_task_stack_, audio_processor_task_buffer_, 1);
+    if (audio_processor_task_ == nullptr) {
+        ESP_LOGE(TAG,
+            "Failed to create audio processor task, internal free: %u, internal largest: %u, psram free: %u",
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+        afe_iface_->destroy(afe_data_);
+        afe_data_ = nullptr;
+    }
 }
 
 AfeAudioProcessor::~AfeAudioProcessor() {
     if (afe_data_ != nullptr) {
         afe_iface_->destroy(afe_data_);
+    }
+    if (audio_processor_task_buffer_ != nullptr) {
+        heap_caps_free(audio_processor_task_buffer_);
+    }
+    if (audio_processor_task_stack_ != nullptr) {
+        heap_caps_free(audio_processor_task_stack_);
     }
     vEventGroupDelete(event_group_);
 }

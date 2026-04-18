@@ -3,6 +3,8 @@
 #include <esp_bt.h>
 #include <esp_bt_main.h>
 #include <esp_bt_device.h>
+#include <esp_err.h>
+#include <esp_heap_caps.h>
 #include "hid_dev.h"
 #include "esp_hidd_api.h"
 #include "hidd_le_prf_int.h"
@@ -10,6 +12,58 @@
 #define TAG "BLE_HID"
 
 BleHid* BleHid::instance_ = nullptr;
+
+namespace {
+
+void LogInternalHeap(const char* stage) {
+    ESP_LOGI(TAG,
+             "%s internal heap free=%u largest=%u minimum=%u",
+             stage,
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)));
+}
+
+void CleanupBleStackAfterInitFailure() {
+    const esp_bluedroid_status_t bluedroid_status = esp_bluedroid_get_status();
+    const esp_bt_controller_status_t controller_status = esp_bt_controller_get_status();
+
+    if (bluedroid_status == ESP_BLUEDROID_STATUS_ENABLED) {
+        esp_err_t ret = esp_bluedroid_disable();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "esp_bluedroid_disable cleanup failed: %s (%d)",
+                     esp_err_to_name(ret), ret);
+        }
+    }
+
+    if (bluedroid_status == ESP_BLUEDROID_STATUS_ENABLED ||
+        bluedroid_status == ESP_BLUEDROID_STATUS_INITIALIZED) {
+        esp_err_t ret = esp_bluedroid_deinit();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "esp_bluedroid_deinit cleanup failed: %s (%d)",
+                     esp_err_to_name(ret), ret);
+        }
+    }
+
+    if (controller_status == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+        esp_err_t ret = esp_bt_controller_disable();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "esp_bt_controller_disable cleanup failed: %s (%d)",
+                     esp_err_to_name(ret), ret);
+        }
+    }
+
+    if (controller_status == ESP_BT_CONTROLLER_STATUS_ENABLED ||
+        controller_status == ESP_BT_CONTROLLER_STATUS_INITED) {
+        esp_err_t ret = esp_bt_controller_deinit();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "esp_bt_controller_deinit cleanup failed: %s (%d)",
+                     esp_err_to_name(ret), ret);
+        }
+    }
+}
+
+} // namespace
 
 #define HIDD_DEVICE_NAME "Xiaozhi_HID"
 static uint8_t hidd_service_uuid128[] = {
@@ -111,47 +165,75 @@ bool BleHid::Initialize() {
     }
     
     esp_err_t ret;
+    connected_ = false;
+    sec_conn_ = false;
+    hid_conn_id_ = 0;
+
+    LogInternalHeap("Before BLE init");
     
     // 释放经典蓝牙内存
-    ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
+    ret = esp_bt_mem_release(ESP_BT_MODE_CLASSIC_BT);
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG, "esp_bt_mem_release failed: %s (%d)", esp_err_to_name(ret), ret);
+    }
+    LogInternalHeap("After BT classic mem release");
     
     // 初始化蓝牙控制器
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     ret = esp_bt_controller_init(&bt_cfg);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "BT controller init failed");
+        LogInternalHeap("BT controller init failed");
+        ESP_LOGE(TAG, "BT controller init failed: %s (%d)", esp_err_to_name(ret), ret);
+        CleanupBleStackAfterInitFailure();
         return false;
     }
     
     ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "BT controller enable failed");
+        ESP_LOGE(TAG, "BT controller enable failed: %s (%d)", esp_err_to_name(ret), ret);
+        CleanupBleStackAfterInitFailure();
         return false;
     }
     
     // 初始化 Bluedroid
     ret = esp_bluedroid_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluedroid init failed");
+        ESP_LOGE(TAG, "Bluedroid init failed: %s (%d)", esp_err_to_name(ret), ret);
+        CleanupBleStackAfterInitFailure();
         return false;
     }
     
     ret = esp_bluedroid_enable();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Bluedroid enable failed");
+        ESP_LOGE(TAG, "Bluedroid enable failed: %s (%d)", esp_err_to_name(ret), ret);
+        CleanupBleStackAfterInitFailure();
         return false;
     }
     
     // 初始化 HID Profile
     ret = esp_hidd_profile_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "HID profile init failed");
+        ESP_LOGE(TAG, "HID profile init failed: %s (%d)", esp_err_to_name(ret), ret);
+        CleanupBleStackAfterInitFailure();
         return false;
     }
     
     // 注册回调
-    esp_ble_gap_register_callback(GapEventHandler);
-    esp_hidd_register_callbacks(HiddEventCallback);
+    ret = esp_ble_gap_register_callback(GapEventHandler);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "BLE GAP callback registration failed: %s (%d)",
+                 esp_err_to_name(ret), ret);
+        CleanupBleStackAfterInitFailure();
+        return false;
+    }
+
+    ret = esp_hidd_register_callbacks(HiddEventCallback);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "BLE HID callback registration failed: %s (%d)",
+                 esp_err_to_name(ret), ret);
+        CleanupBleStackAfterInitFailure();
+        return false;
+    }
     
     // 设置安全参数
     esp_ble_auth_req_t auth_req = ESP_LE_AUTH_BOND;
@@ -167,6 +249,7 @@ bool BleHid::Initialize() {
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof(uint8_t));
     
     initialized_ = true;
+    LogInternalHeap("BLE HID initialized");
     ESP_LOGI(TAG, "BLE HID initialized");
     return true;
 }
@@ -181,10 +264,7 @@ void BleHid::Deinitialize() {
     esp_ble_gap_register_callback(NULL);
     esp_hidd_register_callbacks(NULL);
     
-    esp_bluedroid_disable();
-    esp_bluedroid_deinit();
-    esp_bt_controller_disable();
-    esp_bt_controller_deinit();
+    CleanupBleStackAfterInitFailure();
     
     initialized_ = false;
     connected_ = false;

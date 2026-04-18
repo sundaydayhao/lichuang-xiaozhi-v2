@@ -92,10 +92,24 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
                            int width, int height, int offset_x, int offset_y, bool mirror_x, bool mirror_y, bool swap_xy)
     : LcdDisplay(panel_io, panel, width, height) {
 
-    // draw white
-    std::vector<uint16_t> buffer(width_, 0xFFFF);
-    for (int y = 0; y < height_; y++) {
-        esp_lcd_panel_draw_bitmap(panel_, 0, y, width_, y + 1, buffer.data());
+    // Clear the boot screen with a DMA-capable internal buffer to avoid runtime bounce allocations.
+    constexpr int kBootClearChunkLines = 4;
+    const int chunk_lines = std::min(height_, kBootClearChunkLines);
+    auto* buffer = static_cast<uint16_t*>(heap_caps_malloc(
+        width_ * chunk_lines * sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+    if (buffer == nullptr) {
+        ESP_LOGW(TAG, "Failed to allocate DMA buffer for boot clear");
+    } else {
+        std::fill(buffer, buffer + width_ * chunk_lines, 0xFFFF);
+    }
+    for (int y = 0; y < height_; y += chunk_lines) {
+        const int y_end = std::min(y + chunk_lines, height_);
+        if (buffer != nullptr) {
+            ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel_, 0, y, width_, y_end, buffer));
+        }
+    }
+    if (buffer != nullptr) {
+        heap_caps_free(buffer);
     }
 
     // Set the display to on
@@ -130,7 +144,7 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
         .io_handle = panel_io_,
         .panel_handle = panel_,
         .control_handle = nullptr,
-        .buffer_size = static_cast<uint32_t>(width_ * 20),
+        .buffer_size = static_cast<uint32_t>(width_ * 10),
         .double_buffer = false,
         .trans_size = 0,
         .hres = static_cast<uint32_t>(width_),

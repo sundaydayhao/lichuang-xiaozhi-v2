@@ -5,6 +5,7 @@
 
 void* AllocateImageBuffer(size_t size);
 void FreeImageBuffer(void* data);
+std::unique_ptr<class LvglImage> DecodeImageToPsram(void* data, size_t size);
 std::shared_ptr<class LvglImage> CreateCachedDecodedImage(void* data, size_t size);
 
 
@@ -20,6 +21,7 @@ public:
 class LvglRawImage : public LvglImage {
 public:
     LvglRawImage(void* data, size_t size);
+    LvglRawImage(void* data, size_t size, bool copy_to_psram);
     virtual ~LvglRawImage();
     virtual const lv_img_dsc_t* image_dsc() const override { return &image_dsc_; }
     virtual bool IsGif() const;

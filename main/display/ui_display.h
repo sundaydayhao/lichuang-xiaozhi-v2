@@ -2,6 +2,7 @@
 #define UI_DISPLAY_H
 
 #include "lcd_display.h"
+#include "device_state.h"
 
 #include <array>
 #include <functional>
@@ -99,6 +100,7 @@ private:
     esp_timer_handle_t camera_preview_timer_ = nullptr;
     std::function<void()> camera_preview_callback_;
     std::atomic<bool> ai_print_generation_running_ = false;
+    bool remote_selfie_audio_suspended_ = false;
 
     void InitializeMainMenu();
     void InitializeCameraScreen();
@@ -118,6 +120,8 @@ private:
     void SetCameraMode(CameraMode mode);
     void UpdateCameraModeDisplay();
     void ExecuteCameraAction();
+    void SuspendAudioForRemoteSelfie();
+    void ResumeAudioAfterRemoteSelfie();
     void UpdateCameraBleStatus(bool connected);
     void ShowAiPrintListeningState();
     void ShowAiPrintGeneratingState();

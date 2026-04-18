@@ -1,5 +1,6 @@
 #include "ui_display.h"
 
+#include "application.h"
 #include "ai_print_feature.h"
 #include "assets.h"
 #include "ble_hid.h"
@@ -14,6 +15,8 @@
 #include <esp_err.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <wifi_station.h>
 
 #include <algorithm>
@@ -571,6 +574,19 @@ void UiLcdDisplay::InitializeMainMenu() {
     }
     RefreshMenuIconImages();
 
+    MoveStatusBarToScreen(menu_screen_);
+    lv_screen_load(menu_screen_);
+}
+
+void UiLcdDisplay::InitializeCameraScreen() {
+    DisplayLockGuard lock(this);
+
+    if (camera_screen_ != nullptr) {
+        return;
+    }
+
+    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
+
     camera_screen_ = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(camera_screen_, lv_color_white(), 0);
     lv_obj_set_style_border_width(camera_screen_, 0, 0);
@@ -585,17 +601,6 @@ void UiLcdDisplay::InitializeMainMenu() {
     lv_obj_set_style_text_color(camera_ble_status_label_, lv_color_black(), 0);
     lv_obj_set_style_text_font(camera_ble_status_label_, lvgl_theme->text_font()->font(), 0);
     lv_label_set_text(camera_ble_status_label_, "请连接xiaozhi-hid");
-
-    InitializeCameraScreen();
-
-    MoveStatusBarToScreen(menu_screen_);
-    lv_screen_load(menu_screen_);
-}
-
-void UiLcdDisplay::InitializeCameraScreen() {
-    DisplayLockGuard lock(this);
-
-    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
 
     lv_obj_t* camera_bar = lv_obj_create(camera_screen_);
     lv_obj_set_size(camera_bar, LV_HOR_RES, 80);
@@ -948,12 +953,22 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     }
 
     if (option_id == kRemoteSelfieOptionId) {
+        if (camera_screen_ == nullptr) {
+            InitializeCameraScreen();
+        }
+        SuspendAudioForRemoteSelfie();
         auto& ble_hid = BleHid::GetInstance();
-        ble_hid.Initialize();
+        const bool ble_ready = ble_hid.Initialize();
         ble_hid.OnConnectionStateChanged([this](bool connected) {
             UpdateCameraBleStatus(connected);
         });
-        UpdateCameraBleStatus(ble_hid.IsConnected());
+        if (ble_ready) {
+            UpdateCameraBleStatus(ble_hid.IsConnected());
+        } else {
+            ShowNotification("蓝牙启动失败，请返回重试", 2000);
+            DisplayLockGuard lock(this);
+            lv_label_set_text(camera_ble_status_label_, "蓝牙启动失败，请返回重试");
+        }
 
         ClearFeatureVisual();
         gallery_swipe_enabled_ = false;
@@ -974,6 +989,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 
     if (lv_screen_active() == camera_screen_) {
         BleHid::GetInstance().Deinitialize();
+        ResumeAudioAfterRemoteSelfie();
     }
 
     ApplyFeatureVisual(option_id);
@@ -999,6 +1015,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 void UiLcdDisplay::ReturnToMainMenu() {
     if (lv_screen_active() == camera_screen_) {
         BleHid::GetInstance().Deinitialize();
+        ResumeAudioAfterRemoteSelfie();
     }
 
     gallery_swipe_enabled_ = false;
@@ -1089,6 +1106,24 @@ void UiLcdDisplay::ExecuteCameraAction() {
         ESP_LOGW(TAG, "BLE HID not connected, cannot toggle recording");
     }
     UpdateCameraModeDisplay();
+}
+
+void UiLcdDisplay::SuspendAudioForRemoteSelfie() {
+    if (remote_selfie_audio_suspended_) {
+        return;
+    }
+
+    Application::GetInstance().SuspendAudioForFeature();
+    remote_selfie_audio_suspended_ = true;
+}
+
+void UiLcdDisplay::ResumeAudioAfterRemoteSelfie() {
+    if (!remote_selfie_audio_suspended_) {
+        return;
+    }
+
+    Application::GetInstance().ResumeAudioAfterFeature();
+    remote_selfie_audio_suspended_ = false;
 }
 
 void UiLcdDisplay::UpdateCameraBleStatus(bool connected) {

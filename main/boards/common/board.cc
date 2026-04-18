@@ -61,6 +61,13 @@ Camera* Board::GetCamera() {
     return nullptr;
 }
 
+void Board::ConfigureCameraExplain(const std::string& url, const std::string& token) {
+    auto* camera = GetCamera();
+    if (camera != nullptr) {
+        camera->SetExplainUrl(url, token);
+    }
+}
+
 Led* Board::GetLed() {
     static NoLed led;
     return &led;

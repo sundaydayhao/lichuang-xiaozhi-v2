@@ -794,6 +794,42 @@ void Application::SetListeningMode(ListeningMode mode) {
     SetDeviceState(kDeviceStateListening);
 }
 
+void Application::ApplyAudioBehaviorForState(DeviceState state) {
+    if (audio_service_suspended_for_feature_) {
+        return;
+    }
+
+    switch (state) {
+    case kDeviceStateUnknown:
+    case kDeviceStateIdle:
+        audio_service_.EnableVoiceProcessing(false);
+        audio_service_.EnableWakeWordDetection(true);
+        break;
+    case kDeviceStateListening:
+        if (!audio_service_.IsAudioProcessorRunning()) {
+            if (protocol_) {
+                protocol_->SendStartListening(listening_mode_);
+            }
+            audio_service_.EnableVoiceProcessing(true);
+            audio_service_.EnableWakeWordDetection(false);
+        }
+        break;
+    case kDeviceStateSpeaking:
+        if (listening_mode_ != kListeningModeRealtime) {
+            audio_service_.EnableVoiceProcessing(false);
+#if CONFIG_USE_AFE_WAKE_WORD
+            audio_service_.EnableWakeWordDetection(true);
+#else
+            audio_service_.EnableWakeWordDetection(false);
+#endif
+        }
+        audio_service_.ResetDecoder();
+        break;
+    default:
+        break;
+    }
+}
+
 void Application::SetDeviceState(DeviceState state) {
     if (device_state_ == state) {
         return;
@@ -816,8 +852,7 @@ void Application::SetDeviceState(DeviceState state) {
         case kDeviceStateIdle:
             display->SetStatus(Lang::Strings::STANDBY);
             display->SetEmotion("neutral");
-            audio_service_.EnableVoiceProcessing(false);
-            audio_service_.EnableWakeWordDetection(true);
+            ApplyAudioBehaviorForState(state);
             break;
         case kDeviceStateConnecting:
             display->SetStatus(Lang::Strings::CONNECTING);
@@ -827,33 +862,39 @@ void Application::SetDeviceState(DeviceState state) {
         case kDeviceStateListening:
             display->SetStatus(Lang::Strings::LISTENING);
             display->SetEmotion("neutral");
-
-            // Make sure the audio processor is running
-            if (!audio_service_.IsAudioProcessorRunning()) {
-                // Send the start listening command
-                protocol_->SendStartListening(listening_mode_);
-                audio_service_.EnableVoiceProcessing(true);
-                audio_service_.EnableWakeWordDetection(false);
-            }
+            ApplyAudioBehaviorForState(state);
             break;
         case kDeviceStateSpeaking:
             display->SetStatus(Lang::Strings::SPEAKING);
-
-            if (listening_mode_ != kListeningModeRealtime) {
-                audio_service_.EnableVoiceProcessing(false);
-                // Only AFE wake word can be detected in speaking mode
-#if CONFIG_USE_AFE_WAKE_WORD
-                audio_service_.EnableWakeWordDetection(true);
-#else
-                audio_service_.EnableWakeWordDetection(false);
-#endif
-            }
-            audio_service_.ResetDecoder();
+            ApplyAudioBehaviorForState(state);
             break;
         default:
             // Do nothing
             break;
     }
+}
+
+void Application::SuspendAudioForFeature() {
+    if (audio_service_suspended_for_feature_) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Suspending audio service for feature page");
+    audio_service_suspended_for_feature_ = true;
+    audio_service_.Stop();
+    vTaskDelay(pdMS_TO_TICKS(200));
+}
+
+void Application::ResumeAudioAfterFeature() {
+    if (!audio_service_suspended_for_feature_) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Resuming audio service after feature page");
+    audio_service_.Start();
+    vTaskDelay(pdMS_TO_TICKS(50));
+    audio_service_suspended_for_feature_ = false;
+    ApplyAudioBehaviorForState(device_state_);
 }
 
 void Application::Reboot() {

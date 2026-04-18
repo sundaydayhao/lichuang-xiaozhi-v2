@@ -3,6 +3,7 @@
 #include "display.h"
 #include "application.h"
 #include "lvgl_theme.h"
+#include "lvgl_image.h"
 
 #include <esp_log.h>
 #include <spi_flash_mmap.h>
@@ -182,7 +183,12 @@ bool Assets::Apply() {
                         ESP_LOGE(TAG, "Emoji %s image file %s is not found", name->valuestring, file->valuestring);
                         continue;
                     }
-                    custom_emoji_collection->AddEmoji(name->valuestring, new LvglRawImage(ptr, size));
+                    auto image = DecodeImageToPsram(ptr, size);
+                    if (!image) {
+                        ESP_LOGE(TAG, "Failed to move emoji %s into PSRAM", name->valuestring);
+                        continue;
+                    }
+                    custom_emoji_collection->AddEmoji(name->valuestring, image.release());
                 }
             }
         }
@@ -213,7 +219,7 @@ bool Assets::Apply() {
                     ESP_LOGE(TAG, "The background image file %s is not found", background_image->valuestring);
                     return false;
                 }
-                auto background_image = std::make_shared<LvglCBinImage>(ptr);
+                auto background_image = std::make_shared<LvglCBinImage>(ptr, size, true);
                 light_theme->set_background_image(background_image);
             }
         }
@@ -234,7 +240,7 @@ bool Assets::Apply() {
                     ESP_LOGE(TAG, "The background image file %s is not found", background_image->valuestring);
                     return false;
                 }
-                auto background_image = std::make_shared<LvglCBinImage>(ptr);
+                auto background_image = std::make_shared<LvglCBinImage>(ptr, size, true);
                 dark_theme->set_background_image(background_image);
             }
         }

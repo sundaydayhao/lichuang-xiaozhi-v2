@@ -1,12 +1,44 @@
 #include "afe_wake_word.h"
 #include "audio_service.h"
 
+#include <esp_heap_caps.h>
 #include <esp_log.h>
-#include <sstream>
 
 #define DETECTION_RUNNING_EVENT 1
+#define AUDIO_DETECTION_TASK_STACK_SIZE (4096 * 2)
 
 #define TAG "AfeWakeWord"
+
+namespace {
+
+bool ExtractWakeWordsFromModelInfo(const char* model_info, std::vector<std::string>& wake_words) {
+    if (model_info == nullptr || *model_info == '\0') {
+        return false;
+    }
+
+    size_t token_index = 0;
+    const char* token_start = model_info;
+    const char* cursor = model_info;
+    while (true) {
+        if (*cursor == '_' || *cursor == '\0') {
+            if (token_index >= 2 && ((token_index - 2) % 4 == 0) && cursor > token_start) {
+                wake_words.emplace_back(token_start, cursor - token_start);
+            }
+
+            if (*cursor == '\0') {
+                break;
+            }
+
+            token_start = cursor + 1;
+            ++token_index;
+        }
+        ++cursor;
+    }
+
+    return !wake_words.empty();
+}
+
+}  // namespace
 
 AfeWakeWord::AfeWakeWord()
     : afe_data_(nullptr),
@@ -20,6 +52,16 @@ AfeWakeWord::~AfeWakeWord() {
     if (afe_data_ != nullptr) {
         afe_iface_->destroy(afe_data_);
         afe_data_ = nullptr;
+    }
+
+    if (audio_detection_task_buffer_ != nullptr) {
+        heap_caps_free(audio_detection_task_buffer_);
+        audio_detection_task_buffer_ = nullptr;
+    }
+
+    if (audio_detection_task_stack_ != nullptr) {
+        heap_caps_free(audio_detection_task_stack_);
+        audio_detection_task_stack_ = nullptr;
     }
 
     if (wake_word_encode_task_stack_ != nullptr) {
@@ -63,16 +105,9 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
         ESP_LOGI(TAG, "Model %d: %s", i, models_->model_name[i]);
         if (strstr(models_->model_name[i], ESP_WN_PREFIX) != NULL) {
             wakenet_model_ = models_->model_name[i];
-            auto words = esp_srmodel_get_wake_words(models_, wakenet_model_);
-            if (words == nullptr) {
-                ESP_LOGE(TAG, "Failed to get wake words from model: %s", wakenet_model_);
+            if (!ExtractWakeWordsFromModelInfo(models_->model_info[i], wake_words_)) {
+                ESP_LOGE(TAG, "Failed to parse wake words from model info: %s", wakenet_model_);
                 return false;
-            }
-            // split by ";" to get all wake words
-            std::stringstream ss(words);
-            std::string word;
-            while (std::getline(ss, word, ';')) {
-                wake_words_.push_back(word);
             }
         }
     }
@@ -124,13 +159,37 @@ bool AfeWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) {
     }
     afe_iface_->print_pipeline(afe_data_);
 
-    BaseType_t task_created = xTaskCreate([](void* arg) {
+    if (audio_detection_task_stack_ == nullptr) {
+        audio_detection_task_stack_ = static_cast<StackType_t*>(
+            heap_caps_malloc(AUDIO_DETECTION_TASK_STACK_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    }
+    if (audio_detection_task_buffer_ == nullptr) {
+        audio_detection_task_buffer_ = static_cast<StaticTask_t*>(
+            heap_caps_malloc(sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    }
+    if (audio_detection_task_stack_ == nullptr || audio_detection_task_buffer_ == nullptr) {
+        ESP_LOGE(TAG,
+            "Failed to allocate audio_detection task memory, internal free: %u, internal largest: %u, psram free: %u",
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+        afe_iface_->destroy(afe_data_);
+        afe_data_ = nullptr;
+        return false;
+    }
+
+    audio_detection_task_ = xTaskCreateStaticPinnedToCore([](void* arg) {
         auto this_ = (AfeWakeWord*)arg;
         this_->AudioDetectionTask();
         vTaskDelete(NULL);
-    }, "audio_detection", 6144, this, 3, nullptr);
-    if (task_created != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create audio_detection task");
+    }, "audio_detection", AUDIO_DETECTION_TASK_STACK_SIZE / sizeof(StackType_t), this, 3,
+        audio_detection_task_stack_, audio_detection_task_buffer_, 1);
+    if (audio_detection_task_ == nullptr) {
+        ESP_LOGE(TAG,
+            "Failed to create audio_detection task, internal free: %u, internal largest: %u, psram free: %u",
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
         afe_iface_->destroy(afe_data_);
         afe_data_ = nullptr;
         return false;

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 
 #define TAG "GIF"
@@ -34,9 +35,42 @@ static void f_gif_read(gd_GIF * gif, void * buf, size_t len);
 static int f_gif_seek(gd_GIF * gif, size_t pos, int k);
 static void f_gif_close(gd_GIF * gif);
 
+static void * gif_alloc(size_t size);
+static void * gif_realloc(void * ptr, size_t size);
+static void gif_free(void * ptr);
+
 #if LV_USE_DRAW_SW_ASM == LV_DRAW_SW_ASM_HELIUM
     #include "gifdec_mve.h"
 #endif
+
+static void * gif_alloc(size_t size)
+{
+#if CONFIG_SPIRAM
+    void * ptr = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if(ptr != NULL) {
+        return ptr;
+    }
+#endif
+    return heap_caps_malloc(size, MALLOC_CAP_8BIT);
+}
+
+static void * gif_realloc(void * ptr, size_t size)
+{
+#if CONFIG_SPIRAM
+    void * new_ptr = heap_caps_realloc(ptr, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if(new_ptr != NULL) {
+        return new_ptr;
+    }
+#endif
+    return heap_caps_realloc(ptr, size, MALLOC_CAP_8BIT);
+}
+
+static void gif_free(void * ptr)
+{
+    if(ptr != NULL) {
+        heap_caps_free(ptr);
+    }
+}
 
 static uint16_t
 read_num(gd_GIF * gif)
@@ -121,13 +155,13 @@ static gd_GIF * gif_open(gd_GIF * gif_base)
         ESP_LOGW(TAG, "Image dimensions are too large");
         goto fail;
     } 
-    gif = lv_malloc(sizeof(gd_GIF) + 5 * width * height + LZW_CACHE_SIZE);
+    gif = gif_alloc(sizeof(gd_GIF) + 5 * width * height + LZW_CACHE_SIZE);
 #else
     if(0 == (INT_MAX - sizeof(gd_GIF)) / width / height / 5){
         ESP_LOGW(TAG, "Image dimensions are too large");
         goto fail;
     } 
-    gif = lv_malloc(sizeof(gd_GIF) + 5 * width * height);
+    gif = gif_alloc(sizeof(gd_GIF) + 5 * width * height);
 #endif
     if(!gif) goto fail;
     memcpy(gif, gif_base, sizeof(gd_GIF));
@@ -483,7 +517,7 @@ new_table(int key_size)
 {
     int key;
     int init_bulk = MAX(1 << (key_size + 1), 0x100);
-    Table * table = lv_malloc(sizeof(*table) + sizeof(Entry) * init_bulk);
+    Table * table = gif_alloc(sizeof(*table) + sizeof(Entry) * init_bulk);
     if(table) {
         table->bulk = init_bulk;
         table->nentries = (1 << key_size) + 2;
@@ -506,7 +540,7 @@ add_entry(Table ** tablep, uint16_t length, uint16_t prefix, uint8_t suffix)
     Table * table = *tablep;
     if(table->nentries == table->bulk) {
         table->bulk *= 2;
-        table = lv_realloc(table, sizeof(*table) + sizeof(Entry) * table->bulk);
+        table = gif_realloc(table, sizeof(*table) + sizeof(Entry) * table->bulk);
         if(!table) return -1;
         table->entries = (Entry *) &table[1];
         *tablep = table;
@@ -581,7 +615,7 @@ read_image_data(gd_GIF * gif, int interlace)
         else if(!table_is_full) {
             ret = add_entry(&table, str_len + 1, key, entry.suffix);
             if(ret == -1) {
-                lv_free(table);
+                gif_free(table);
                 return -1;
             }
             if(table->nentries == 0x1000) {
@@ -597,7 +631,7 @@ read_image_data(gd_GIF * gif, int interlace)
         str_len = entry.length;
 	if(frm_off + str_len > frm_size){
 		ESP_LOGW(TAG, "LZW table token overflows the frame buffer");
-		lv_free(table);
+		gif_free(table);
 		return -1;
 	}
         for(i = 0; i < str_len; i++) {
@@ -616,7 +650,7 @@ read_image_data(gd_GIF * gif, int interlace)
         if(key < table->nentries - 1 && !table_is_full)
             table->entries[table->nentries - 1].suffix = entry.suffix;
     }
-    lv_free(table);
+    gif_free(table);
     if(key == stop) f_gif_read(gif, &sub_len, 1);  /* Must be zero! */
     f_gif_seek(gif, end, LV_FS_SEEK_SET);
     return 0;
@@ -766,7 +800,7 @@ void
 gd_close_gif(gd_GIF * gif)
 {
     f_gif_close(gif);
-    lv_free(gif);
+    gif_free(gif);
 }
 
 static bool f_gif_open(gd_GIF * gif, const void * path, bool is_file)
@@ -818,4 +852,3 @@ static void f_gif_close(gd_GIF * gif)
         lv_fs_close(&gif->fd);
     }
 }
-

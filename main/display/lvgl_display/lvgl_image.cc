@@ -51,7 +51,7 @@ void FreeImageBuffer(void* data) {
     }
 }
 
-std::shared_ptr<LvglImage> CreateCachedDecodedImage(void* data, size_t size) {
+std::unique_ptr<LvglImage> DecodeImageToPsram(void* data, size_t size) {
     if (data == nullptr || size == 0) {
         return nullptr;
     }
@@ -66,33 +66,45 @@ std::shared_ptr<LvglImage> CreateCachedDecodedImage(void* data, size_t size) {
     decoder_args.no_cache = true;
     if (lv_image_decoder_open(&decoder_dsc, &source, &decoder_args) != LV_RESULT_OK ||
         decoder_dsc.decoded == nullptr) {
-        return std::make_shared<LvglRawImage>(data, size);
+        return std::make_unique<LvglRawImage>(data, size, true);
     }
 
     const uint32_t width = decoder_dsc.decoded->header.w;
     const uint32_t height = decoder_dsc.decoded->header.h;
     if (width == 0 || height == 0) {
         lv_image_decoder_close(&decoder_dsc);
-        return std::make_shared<LvglRawImage>(data, size);
+        return std::make_unique<LvglRawImage>(data, size, true);
     }
 
     const size_t decoded_size = GetDecodedBufferSize(decoder_dsc.decoded);
     auto* decoded_data = static_cast<uint8_t*>(AllocateImageBuffer(decoded_size));
     if (decoded_data == nullptr) {
         lv_image_decoder_close(&decoder_dsc);
-        return std::make_shared<LvglRawImage>(data, size);
+        return std::make_unique<LvglRawImage>(data, size, true);
     }
 
     std::memcpy(decoded_data, decoder_dsc.decoded->data, decoded_size);
     const int stride = static_cast<int>(decoder_dsc.decoded->header.stride);
     const int color_format = static_cast<int>(decoder_dsc.decoded->header.cf);
     lv_image_decoder_close(&decoder_dsc);
-    return std::make_shared<LvglAllocatedImage>(decoded_data, decoded_size,
+    return std::make_unique<LvglAllocatedImage>(decoded_data, decoded_size,
                                                 static_cast<int>(width), static_cast<int>(height),
                                                 stride, color_format);
 }
 
-LvglRawImage::LvglRawImage(void* data, size_t size) {
+std::shared_ptr<LvglImage> CreateCachedDecodedImage(void* data, size_t size) {
+    auto image = DecodeImageToPsram(data, size);
+    if (!image) {
+        return nullptr;
+    }
+    return std::shared_ptr<LvglImage>(std::move(image));
+}
+
+LvglRawImage::LvglRawImage(void* data, size_t size)
+    : LvglRawImage(data, size, false) {
+}
+
+LvglRawImage::LvglRawImage(void* data, size_t size, bool copy_to_psram) {
     bzero(&image_dsc_, sizeof(image_dsc_));
     image_dsc_.data_size = size;
     image_dsc_.data = static_cast<uint8_t*>(data);
@@ -148,6 +160,18 @@ LvglRawImage::LvglRawImage(void* data, size_t size) {
     }
 
 fallback_to_raw_decoder:
+    if (copy_to_psram && data != nullptr && size > 0) {
+        auto* copied = static_cast<uint8_t*>(AllocateImageBuffer(size));
+        if (copied != nullptr) {
+            memcpy(copied, data, size);
+            image_dsc_.data = copied;
+            owns_data_ = true;
+        } else {
+            ESP_LOGW(TAG, "Failed to copy raw image data to PSRAM, size: %u",
+                     static_cast<unsigned>(size));
+        }
+    }
+
     if (lv_image_decoder_get_info(&image_dsc_, &image_dsc_.header) != LV_RESULT_OK) {
         image_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
         image_dsc_.header.cf = LV_COLOR_FORMAT_RAW_ALPHA;

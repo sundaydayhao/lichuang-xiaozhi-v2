@@ -39,6 +39,9 @@ private:
     bool owns_models_ = false;
     esp_afe_sr_iface_t* afe_iface_ = nullptr;
     esp_afe_sr_data_t* afe_data_ = nullptr;
+    TaskHandle_t audio_detection_task_ = nullptr;
+    StaticTask_t* audio_detection_task_buffer_ = nullptr;
+    StackType_t* audio_detection_task_stack_ = nullptr;
     char* wakenet_model_ = NULL;
     std::vector<std::string> wake_words_;
     EventGroupHandle_t event_group_;
