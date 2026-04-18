@@ -315,8 +315,6 @@ void LcdDisplay::EnsureEmotionWidgetsLocked() {
     auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
     auto text_font = lvgl_theme->text_font()->font();
     auto large_icon_font = lvgl_theme->large_icon_font()->font();
-
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
     auto screen = lv_screen_active();
 
     if (emoji_image_ == nullptr) {
@@ -333,37 +331,6 @@ void LcdDisplay::EnsureEmotionWidgetsLocked() {
         lv_label_set_text(emoji_label_, "");
         lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
     }
-#else
-    if (content_ == nullptr) {
-        return;
-    }
-
-    if (emoji_box_ == nullptr) {
-        emoji_box_ = lv_obj_create(content_);
-        lv_obj_set_size(emoji_box_, LV_PCT(100), LV_PCT(100));
-        lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_clear_flag(emoji_box_, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_style_bg_opa(emoji_box_, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_pad_all(emoji_box_, 0, 0);
-        lv_obj_set_style_border_width(emoji_box_, 0, 0);
-        lv_obj_center(emoji_box_);
-    }
-
-    if (emoji_label_ == nullptr) {
-        emoji_label_ = lv_label_create(emoji_box_);
-        lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
-        lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
-        lv_label_set_text(emoji_label_, "");
-        lv_obj_center(emoji_label_);
-        lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    if (emoji_image_ == nullptr) {
-        emoji_image_ = lv_img_create(emoji_box_);
-        lv_obj_center(emoji_image_);
-        lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
-    }
-#endif
 }
 
 void LcdDisplay::DestroyEmotionWidgetsLocked() {
@@ -395,7 +362,6 @@ void LcdDisplay::SetPreviewPresentationMode(PreviewPresentationMode mode) {
     }
 }
 
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
 void LcdDisplay::SetupUI() {
     DisplayLockGuard lock(this);
 
@@ -516,6 +482,7 @@ void LcdDisplay::SetupUI() {
     lv_obj_center(preview_image_);
     lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
 }
+
 #define  MAX_MESSAGES 20
 void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     DisplayLockGuard lock(this);
@@ -821,162 +788,6 @@ void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
     // Auto-scroll to the image bubble
     lv_obj_scroll_to_view_recursive(img_bubble, LV_ANIM_ON);
 }
-#else
-void LcdDisplay::SetupUI() {
-    DisplayLockGuard lock(this);
-    LvglTheme* lvgl_theme = static_cast<LvglTheme*>(current_theme_);
-    auto text_font = lvgl_theme->text_font()->font();
-    auto icon_font = lvgl_theme->icon_font()->font();
-    auto large_icon_font = lvgl_theme->large_icon_font()->font();
-
-    auto screen = lv_screen_active();
-    lv_obj_set_style_text_font(screen, text_font, 0);
-    lv_obj_set_style_text_color(screen, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_bg_color(screen, lvgl_theme->background_color(), 0);
-
-    /* Container */
-    container_ = lv_obj_create(screen);
-    lv_obj_set_size(container_, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_style_radius(container_, 0, 0);
-    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(container_, 0, 0);
-    lv_obj_set_style_border_width(container_, 0, 0);
-    lv_obj_set_style_pad_row(container_, 0, 0);
-    lv_obj_set_style_bg_color(container_, lvgl_theme->background_color(), 0);
-    lv_obj_set_style_border_color(container_, lvgl_theme->border_color(), 0);
-
-    /* Status bar */
-    status_bar_ = lv_obj_create(container_);
-    lv_obj_set_size(status_bar_, LV_HOR_RES, LV_SIZE_CONTENT);
-    lv_obj_set_style_radius(status_bar_, 0, 0);
-    lv_obj_set_style_bg_color(status_bar_, lvgl_theme->background_color(), 0);
-    lv_obj_set_style_bg_opa(status_bar_, LV_OPA_50, 0);
-    lv_obj_set_style_text_color(status_bar_, lvgl_theme->text_color(), 0);
-    lv_obj_set_flex_flow(status_bar_, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_top(status_bar_, lvgl_theme->spacing(2), 0);
-    lv_obj_set_style_pad_bottom(status_bar_, lvgl_theme->spacing(2), 0);
-    lv_obj_set_style_pad_left(status_bar_, lvgl_theme->spacing(18), 0);
-    lv_obj_set_style_pad_right(status_bar_, lvgl_theme->spacing(18), 0);
-    lv_obj_set_style_border_width(status_bar_, 0, 0);
-    lv_obj_set_style_pad_column(status_bar_, 0, 0);
-    
-    /* Content */
-    content_ = lv_obj_create(container_);
-    lv_obj_set_scrollbar_mode(content_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_radius(content_, 0, 0);
-    lv_obj_set_width(content_, LV_HOR_RES);
-    lv_obj_set_flex_grow(content_, 1);
-    lv_obj_set_style_pad_all(content_, 0, 0);
-    lv_obj_set_style_border_width(content_, 0, 0);
-    lv_obj_set_style_bg_color(content_, lvgl_theme->chat_background_color(), 0);
-    lv_obj_set_style_bg_opa(content_, LV_OPA_TRANSP, 0);
-
-    lv_obj_set_flex_flow(content_, LV_FLEX_FLOW_COLUMN); // 垂直布局（从上到下）
-    lv_obj_set_flex_align(status_bar_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    EnsureEmotionWidgetsLocked();
-
-    preview_image_ = lv_image_create(content_);
-    //lv_obj_set_size(preview_image_, width_/2 , height_/2 );
-    lv_obj_align(preview_image_, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-
-    chat_message_label_ = lv_label_create(content_);
-    lv_label_set_text(chat_message_label_, "");
-    lv_obj_set_width(chat_message_label_, width_ * 0.9); // 限制宽度为屏幕宽度的 90%
-    lv_label_set_long_mode(chat_message_label_, LV_LABEL_LONG_WRAP); // 设置为自动换行模式
-    lv_obj_set_style_text_align(chat_message_label_, LV_TEXT_ALIGN_CENTER, 0); // 设置文本居中对齐
-    lv_obj_set_style_text_color(chat_message_label_, lvgl_theme->text_color(), 0);
-
-    /* Status bar */
-    network_label_ = lv_label_create(status_bar_);
-    lv_label_set_text(network_label_, "");
-    lv_obj_set_style_text_font(network_label_, icon_font, 0);
-    lv_obj_set_style_text_color(network_label_, lvgl_theme->text_color(), 0);
-
-    notification_label_ = lv_label_create(status_bar_);
-    lv_obj_set_flex_grow(notification_label_, 1);
-    lv_obj_set_style_text_align(notification_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(notification_label_, lvgl_theme->text_color(), 0);
-    lv_label_set_text(notification_label_, "");
-    lv_obj_add_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
-
-    status_label_ = lv_label_create(status_bar_);
-    lv_obj_set_flex_grow(status_label_, 1);
-    lv_label_set_long_mode(status_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(status_label_, lvgl_theme->text_color(), 0);
-    lv_label_set_text(status_label_, Lang::Strings::INITIALIZING);
-
-    mute_label_ = lv_label_create(status_bar_);
-    lv_label_set_text(mute_label_, "");
-    lv_obj_set_style_text_font(mute_label_, icon_font, 0);
-    lv_obj_set_style_text_color(mute_label_, lvgl_theme->text_color(), 0);
-
-    battery_label_ = lv_label_create(status_bar_);
-    lv_label_set_text(battery_label_, "");
-    lv_obj_set_style_text_font(battery_label_, large_icon_font, 0);
-    lv_obj_set_style_text_color(battery_label_, lvgl_theme->text_color(), 0);
-
-    low_battery_popup_ = lv_obj_create(screen);
-    lv_obj_set_scrollbar_mode(low_battery_popup_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_size(low_battery_popup_, LV_HOR_RES * 0.9, text_font->line_height * 2);
-    lv_obj_align(low_battery_popup_, LV_ALIGN_BOTTOM_MID, 0, -lvgl_theme->spacing(4));
-    lv_obj_set_style_bg_color(low_battery_popup_, lvgl_theme->low_battery_color(), 0);
-    lv_obj_set_style_radius(low_battery_popup_, lvgl_theme->spacing(4), 0);
-    
-    low_battery_label_ = lv_label_create(low_battery_popup_);
-    lv_label_set_text(low_battery_label_, Lang::Strings::BATTERY_NEED_CHARGE);
-    lv_obj_set_style_text_color(low_battery_label_, lv_color_white(), 0);
-    lv_obj_center(low_battery_label_);
-    lv_obj_add_flag(low_battery_popup_, LV_OBJ_FLAG_HIDDEN);
-}
-
-void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
-    DisplayLockGuard lock(this);
-    if (preview_image_ == nullptr) {
-        ESP_LOGE(TAG, "Preview image is not initialized");
-        return;
-    }
-
-    if (image == nullptr) {
-        esp_timer_stop(preview_timer_);
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-        preview_image_cached_.reset();
-        if (gif_controller_) {
-            gif_controller_->Start();
-        }
-        return;
-    }
-
-    preview_image_cached_ = std::move(image);
-    auto img_dsc = preview_image_cached_->image_dsc();
-    // 设置图片源并显示预览图片
-    lv_image_set_src(preview_image_, img_dsc);
-    if (img_dsc->header.w > 0 && img_dsc->header.h > 0) {
-        // zoom factor 0.5
-        //lv_image_set_scale(preview_image_, 256 * 170  / img_dsc->header.w);
-    }
-
-    // Hide emoji_box_
-    if (gif_controller_) {
-        gif_controller_->Stop();
-    }
-    lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-    esp_timer_stop(preview_timer_);
-    ESP_ERROR_CHECK(esp_timer_start_once(preview_timer_, PREVIEW_IMAGE_DURATION_MS * 1000));
-}
-
-void LcdDisplay::SetChatMessage(const char* role, const char* content) {
-    DisplayLockGuard lock(this);
-    if (chat_message_label_ == nullptr) {
-        return;
-    }
-    lv_label_set_text(chat_message_label_, content);
-}
-#endif
 
 void LcdDisplay::SetEmotion(const char* emotion) {
     // Stop any running GIF animation
@@ -1040,7 +851,6 @@ void LcdDisplay::SetEmotion(const char* emotion) {
         lv_obj_remove_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
     }
 
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
     // Wechat message style中，如果emotion是neutral，则不显示
     uint32_t child_count = lv_obj_get_child_cnt(content_);
     if (strcmp(emotion, "neutral") == 0 && child_count > 0) {
@@ -1053,7 +863,6 @@ void LcdDisplay::SetEmotion(const char* emotion) {
         lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
     }
-#endif
 }
 
 void LcdDisplay::SetTheme(Theme* theme) {
@@ -1110,8 +919,6 @@ void LcdDisplay::SetTheme(Theme* theme) {
     // Set content background opacity
     lv_obj_set_style_bg_opa(content_, LV_OPA_TRANSP, 0);
 
-    // If we have the chat message style, update all message bubbles
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
     // Iterate through all children of content (message containers or bubbles)
     uint32_t child_count = lv_obj_get_child_cnt(content_);
     for (uint32_t i = 0; i < child_count; i++) {
@@ -1176,16 +983,6 @@ void LcdDisplay::SetTheme(Theme* theme) {
             ESP_LOGW(TAG, "child[%lu] Bubble type is not found", i);
         }
     }
-#else
-    // Simple UI mode - just update the main chat message
-    if (chat_message_label_ != nullptr) {
-        lv_obj_set_style_text_color(chat_message_label_, lvgl_theme->text_color(), 0);
-    }
-    
-    if (emoji_label_ != nullptr) {
-        lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
-    }
-#endif
     
     // Update low battery popup
     lv_obj_set_style_bg_color(low_battery_popup_, lvgl_theme->low_battery_color(), 0);

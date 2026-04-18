@@ -147,19 +147,6 @@ choice DISPLAY_ESP32S3_AUDIO_BOARD
         bool "ST7789, 分辨率240*320"
 endchoice
 
-choice DISPLAY_STYLE
-    prompt "Select display style"
-    default USE_DEFAULT_MESSAGE_STYLE
-    help
-        Select display style for Xiaozhi device
-
-    config USE_DEFAULT_MESSAGE_STYLE
-        bool "Enable default message style"
-
-    config USE_WECHAT_MESSAGE_STYLE
-        bool "Enable WeChat Message Style"
-endchoice
-
 config USE_AFE_WAKE_WORD
     bool "Enable Wake Word Detection (AFE)"
     default y

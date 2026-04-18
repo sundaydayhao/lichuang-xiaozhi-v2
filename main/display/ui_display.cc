@@ -704,7 +704,6 @@ void UiLcdDisplay::SetDialogueSceneOverlayText(const char* text) {
 }
 
 void UiLcdDisplay::ClearAiSceneMessages() {
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
     DisplayLockGuard lock(this);
     if (content_ == nullptr) {
         chat_message_label_ = nullptr;
@@ -719,13 +718,6 @@ void UiLcdDisplay::ClearAiSceneMessages() {
         lv_obj_del(child);
     }
     chat_message_label_ = nullptr;
-#else
-    DisplayLockGuard lock(this);
-    lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
-    if (chat_label != nullptr) {
-        lv_label_set_text(chat_label, "");
-    }
-#endif
 }
 
 void UiLcdDisplay::MarkDialogueScenePromptCaptured() {
@@ -1294,13 +1286,11 @@ void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
     lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_move_foreground(status_bar_);
 
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
     if (content_ != nullptr) {
         lv_obj_update_layout(status_bar_);
         const lv_coord_t reserved_top = (target_screen == ai_screen_) ? lv_obj_get_height(status_bar_) : 0;
         lv_obj_set_style_pad_top(content_, reserved_top, 0);
     }
-#endif
 
     if (target_screen == ai_screen_ && feature_background_image_ != nullptr) {
         lv_obj_set_size(feature_background_image_, LV_HOR_RES, LV_VER_RES);
@@ -1435,11 +1425,9 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         return;
     }
 
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
     SetPreviewPresentationMode(
         option_id == kVisionOptionId ? PreviewPresentationMode::kOverlay
                                      : PreviewPresentationMode::kChatBubble);
-#endif
 
     if (current_dialogue_scene_option_id_ != 0) {
         ExitDialogueScene(true);
@@ -1546,9 +1534,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 
 void UiLcdDisplay::ReturnToMainMenu() {
     ExitDialogueScene(true);
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
     SetPreviewPresentationMode(PreviewPresentationMode::kChatBubble);
-#endif
     if (lv_screen_active() == camera_screen_) {
         BleHid::GetInstance().SetScreenActive(false);
         ResumeAudioAfterRemoteSelfie();
@@ -1570,9 +1556,7 @@ void UiLcdDisplay::ReturnToMainMenu() {
 
 void UiLcdDisplay::ReturnToCameraScreen() {
     gallery_swipe_enabled_ = true;
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
     SetPreviewPresentationMode(PreviewPresentationMode::kOverlay);
-#endif
     HideAlarmPanel();
     ApplyFeatureVisual(kVisionOptionId);
     {

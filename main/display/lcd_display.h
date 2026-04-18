@@ -39,13 +39,7 @@ protected:
     esp_timer_handle_t preview_timer_ = nullptr;
     std::unique_ptr<LvglImage> preview_image_cached_ = nullptr;
     bool suppress_emotion_display_ = false;
-    PreviewPresentationMode preview_presentation_mode_ =
-#if CONFIG_USE_WECHAT_MESSAGE_STYLE
-        PreviewPresentationMode::kChatBubble
-#else
-        PreviewPresentationMode::kOverlay
-#endif
-        ;
+    PreviewPresentationMode preview_presentation_mode_ = PreviewPresentationMode::kChatBubble;
 
 
     void InitializeLcdThemes();
