@@ -15,6 +15,12 @@
 
 
 class LcdDisplay : public LvglDisplay {
+public:
+    enum class PreviewPresentationMode {
+        kOverlay = 0,
+        kChatBubble = 1,
+    };
+
 protected:
     esp_lcd_panel_io_handle_t panel_io_ = nullptr;
     esp_lcd_panel_handle_t panel_ = nullptr;
@@ -33,9 +39,19 @@ protected:
     esp_timer_handle_t preview_timer_ = nullptr;
     std::unique_ptr<LvglImage> preview_image_cached_ = nullptr;
     bool suppress_emotion_display_ = false;
+    PreviewPresentationMode preview_presentation_mode_ =
+#if CONFIG_USE_WECHAT_MESSAGE_STYLE
+        PreviewPresentationMode::kChatBubble
+#else
+        PreviewPresentationMode::kOverlay
+#endif
+        ;
+
 
     void InitializeLcdThemes();
     void SetupUI();
+    void EnsureEmotionWidgetsLocked();
+    void DestroyEmotionWidgetsLocked();
     virtual bool Lock(int timeout_ms = 0) override;
     virtual void Unlock() override;
 
@@ -48,6 +64,7 @@ public:
     virtual void SetEmotion(const char* emotion) override;
     virtual void SetChatMessage(const char* role, const char* content) override; 
     virtual void SetPreviewImage(std::unique_ptr<LvglImage> image) override;
+    void SetPreviewPresentationMode(PreviewPresentationMode mode);
 
     // Add theme switching function
     virtual void SetTheme(Theme* theme) override;

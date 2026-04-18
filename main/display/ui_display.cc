@@ -99,6 +99,15 @@ lv_obj_t* TakeValidObject(lv_obj_t*& object) {
     return nullptr;
 }
 
+bool IsPersistentContentOverlay(lv_obj_t* object) {
+    if (object == nullptr || !lv_obj_is_valid(object)) {
+        return false;
+    }
+
+    const void* user_data = lv_obj_get_user_data(object);
+    return user_data != nullptr && strcmp(static_cast<const char*>(user_data), "preview_overlay") == 0;
+}
+
 } // namespace
 
 UiLcdDisplay::UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
@@ -468,15 +477,10 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     if (background == nullptr) {
         suppress_emotion_display_ = false;
         lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+        EnsureEmotionWidgetsLocked();
         if (preview_image_ != nullptr) {
             lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
             lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (emoji_box_ != nullptr) {
-            lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (emoji_label_ != nullptr) {
-            lv_obj_remove_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
         }
         if (chat_label != nullptr) {
             lv_label_set_text(chat_label, GetMenuText(option_id));
@@ -490,15 +494,7 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
 
     suppress_emotion_display_ = true;
     lv_image_set_src(feature_background_image_, background);
-    if (emoji_box_ != nullptr) {
-        lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_label_ != nullptr) {
-        lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_image_ != nullptr) {
-        lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
-    }
+    DestroyEmotionWidgetsLocked();
     if (preview_image_ != nullptr) {
         lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
         lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
@@ -530,12 +526,7 @@ void UiLcdDisplay::ClearFeatureVisual() {
         lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
         lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (emoji_box_ != nullptr) {
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_label_ != nullptr) {
-        lv_obj_remove_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
-    }
+    EnsureEmotionWidgetsLocked();
     if (chat_label != nullptr) {
         lv_label_set_text(chat_label, "");
     }
@@ -570,8 +561,12 @@ void UiLcdDisplay::ClearAiSceneMessages() {
         return;
     }
 
-    while (lv_obj_get_child_cnt(content_) > 0) {
-        lv_obj_del(lv_obj_get_child(content_, 0));
+    for (int32_t i = static_cast<int32_t>(lv_obj_get_child_cnt(content_)) - 1; i >= 0; --i) {
+        lv_obj_t* child = lv_obj_get_child(content_, i);
+        if (IsPersistentContentOverlay(child)) {
+            continue;
+        }
+        lv_obj_del(child);
     }
     chat_message_label_ = nullptr;
 #else
@@ -679,10 +674,11 @@ void UiLcdDisplay::InitializeMainMenu() {
     feature_background_image_ = lv_image_create(container_);
     lv_obj_set_size(feature_background_image_, LV_HOR_RES, LV_VER_RES);
     lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_FLOATING);
     lv_image_set_inner_align(feature_background_image_, LV_IMAGE_ALIGN_STRETCH);
     lv_obj_set_style_bg_opa(feature_background_image_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(feature_background_image_, 0, 0);
-    lv_obj_center(feature_background_image_);
+    lv_obj_set_pos(feature_background_image_, 0, 0);
     lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_to_index(feature_background_image_, 0);
 
@@ -1118,19 +1114,34 @@ void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
         return;
     }
 
-    lv_obj_set_parent(status_bar_, target_screen);
+    if (target_screen == ai_screen_ && container_ != nullptr) {
+        lv_obj_set_parent(status_bar_, container_);
+        lv_obj_add_flag(status_bar_, LV_OBJ_FLAG_FLOATING);
+        lv_obj_add_flag(status_bar_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    } else {
+        lv_obj_set_parent(status_bar_, target_screen);
+        lv_obj_remove_flag(status_bar_, LV_OBJ_FLAG_FLOATING);
+        lv_obj_remove_flag(status_bar_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
+
     UpdateStatusBarAppearance(target_screen);
     lv_obj_clear_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_move_foreground(status_bar_);
 
 #if CONFIG_USE_WECHAT_MESSAGE_STYLE
-    if (container_ != nullptr) {
+    if (content_ != nullptr) {
         lv_obj_update_layout(status_bar_);
         const lv_coord_t reserved_top = (target_screen == ai_screen_) ? lv_obj_get_height(status_bar_) : 0;
-        lv_obj_set_style_pad_top(container_, reserved_top, 0);
+        lv_obj_set_style_pad_top(content_, reserved_top, 0);
     }
 #endif
+
+    if (target_screen == ai_screen_ && feature_background_image_ != nullptr) {
+        lv_obj_set_size(feature_background_image_, LV_HOR_RES, LV_VER_RES);
+        lv_obj_set_pos(feature_background_image_, 0, 0);
+        lv_obj_move_to_index(feature_background_image_, 0);
+    }
 }
 
 lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, BackButtonData* data, bool dark_surface) {
@@ -1259,6 +1270,12 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         return;
     }
 
+#if CONFIG_USE_WECHAT_MESSAGE_STYLE
+    SetPreviewPresentationMode(
+        option_id == kVisionOptionId ? PreviewPresentationMode::kOverlay
+                                     : PreviewPresentationMode::kChatBubble);
+#endif
+
     if (current_dialogue_scene_option_id_ != 0) {
         ExitDialogueScene(true);
     }
@@ -1364,6 +1381,9 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 
 void UiLcdDisplay::ReturnToMainMenu() {
     ExitDialogueScene(true);
+#if CONFIG_USE_WECHAT_MESSAGE_STYLE
+    SetPreviewPresentationMode(PreviewPresentationMode::kChatBubble);
+#endif
     if (lv_screen_active() == camera_screen_) {
         BleHid::GetInstance().SetScreenActive(false);
         ResumeAudioAfterRemoteSelfie();
@@ -1385,6 +1405,9 @@ void UiLcdDisplay::ReturnToMainMenu() {
 
 void UiLcdDisplay::ReturnToCameraScreen() {
     gallery_swipe_enabled_ = true;
+#if CONFIG_USE_WECHAT_MESSAGE_STYLE
+    SetPreviewPresentationMode(PreviewPresentationMode::kOverlay);
+#endif
     HideAlarmPanel();
     ApplyFeatureVisual(kVisionOptionId);
     {
