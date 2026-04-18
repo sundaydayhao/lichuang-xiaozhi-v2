@@ -10,9 +10,10 @@
 #include <memory>
 #include <string>
 #include <atomic>
+#include <esp_timer.h>
 #include <vector>
 
-class AiPrintFeature;
+class UiPrintPanel;
 class UiLcdDisplay : public SpiLcdDisplay {
 public:
     static constexpr size_t kMenuItemCount = 12;
@@ -29,7 +30,7 @@ public:
     bool IsAiPrintActive() const;
 
 private:
-    friend class AiPrintFeature;
+    friend class UiPrintPanel;
 
     enum class CameraMode {
         kPhoto = 0,
@@ -54,6 +55,7 @@ private:
     };
 
     lv_obj_t* ai_screen_ = nullptr;
+    lv_obj_t* ai_back_button_ = nullptr;
     lv_obj_t* feature_background_image_ = nullptr;
     lv_obj_t* menu_screen_ = nullptr;
     lv_obj_t* menu_page_container_ = nullptr;
@@ -77,6 +79,10 @@ private:
     std::array<lv_obj_t*, kAboutInfoItemCount> about_info_value_labels_ = {};
     std::array<lv_obj_t*, kAboutInfoItemCount> about_info_separator_labels_ = {};
     BackButtonData about_back_button_data_ = {};
+    BackButtonData ai_back_button_data_ = {};
+    BackButtonData camera_back_button_data_ = {};
+    BackButtonData gallery_back_button_data_ = {};
+    BackButtonData photo_viewer_back_button_data_ = {};
 
     lv_obj_t* camera_screen_ = nullptr;
     lv_obj_t* camera_mode_btn_left_ = nullptr;
@@ -94,6 +100,20 @@ private:
     std::unique_ptr<LvglImage> current_photo_image_;
     std::vector<std::string> photo_files_;
     std::map<std::string, std::shared_ptr<LvglImage>> asset_image_cache_;
+    esp_timer_handle_t alarm_ui_timer_ = nullptr;
+    lv_obj_t* alarm_panel_ = nullptr;
+    lv_obj_t* alarm_subtitle_label_ = nullptr;
+    lv_obj_t* alarm_now_time_label_ = nullptr;
+    lv_obj_t* alarm_date_label_ = nullptr;
+    lv_obj_t* alarm_hint_label_ = nullptr;
+    lv_obj_t* alarm_next_icon_label_ = nullptr;
+    lv_obj_t* alarm_next_time_label_ = nullptr;
+    lv_obj_t* alarm_ring_frame_ = nullptr;
+    lv_obj_t* alarm_ring_inner_ = nullptr;
+    lv_obj_t* alarm_clock_time_label_ = nullptr;
+    lv_obj_t* alarm_countdown_label_ = nullptr;
+    lv_obj_t* alarm_hourglass_label_ = nullptr;
+    std::array<lv_obj_t*, 24> alarm_ring_segments_ = {};
 
     bool gallery_swipe_enabled_ = false;
     int current_feature_option_id_ = 0;
@@ -107,10 +127,22 @@ private:
     void InitializeGallery();
     void InitializeSettingsScreen();
     void InitializeAboutScreen();
+    void InitializeAlarmSupport();
+    void DeinitializeAlarmSupport();
+    void InitializeAlarmPanel();
+    void UpdateStatusBarAppearance(lv_obj_t* target_screen);
+    bool ShouldUseTransparentStatusBar(lv_obj_t* target_screen) const;
     void MoveStatusBarToScreen(lv_obj_t* target_screen);
+    lv_obj_t* CreateBackButton(lv_obj_t* parent, BackButtonData* data, bool dark_surface = false);
 
     void StartCameraPreview(int interval_ms);
     void StopCameraPreview();
+    void StartAlarmUiRefresh();
+    void StopAlarmUiRefresh();
+    void RefreshAlarmUi();
+    void ShowAlarmPanel();
+    void HideAlarmPanel();
+    bool HasValidLocalTime() const;
 
     void OnMenuOptionClicked(int option_id);
     void ReturnToMainMenu();

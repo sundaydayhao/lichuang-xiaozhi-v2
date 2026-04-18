@@ -19,6 +19,7 @@
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <esp_lcd_panel_ops.h>
+#include <esp_partition.h>
 #include <esp_lcd_panel_vendor.h>
 #include <nvs.h>
 #include <nvs_flash.h>
@@ -294,9 +295,15 @@ private:
     }
 
     void MountStorage() {
+        const char* partition_label = "storage";
+        if (esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS,
+                                     partition_label) == nullptr) {
+            partition_label = "assets";
+        }
+
         esp_vfs_spiffs_conf_t conf = {
             .base_path = "/storage",
-            .partition_label = "storage",
+            .partition_label = partition_label,
             .max_files = 10,
             .format_if_mount_failed = true,
         };
@@ -315,11 +322,12 @@ private:
 
         size_t total = 0;
         size_t used = 0;
-        ret = esp_spiffs_info("storage", &total, &used);
+        ret = esp_spiffs_info(partition_label, &total, &used);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s)", esp_err_to_name(ret));
         } else {
-            ESP_LOGI(TAG, "Storage partition mounted: total: %d KB, used: %d KB", total / 1024, used / 1024);
+            ESP_LOGI(TAG, "Storage partition mounted from '%s': total: %d KB, used: %d KB",
+                     partition_label, total / 1024, used / 1024);
         }
     }
 

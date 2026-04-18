@@ -1,7 +1,7 @@
 #include "ui_display.h"
 
 #include "application.h"
-#include "ai_print_feature.h"
+#include "ui_print_panel.h"
 #include "assets.h"
 #include "ble_hid.h"
 #include "board.h"
@@ -39,9 +39,12 @@ constexpr int kMenuButtonHitPadding = 8;
 constexpr int kVisionOptionId = 4;
 constexpr int kRemoteSelfieOptionId = 6;
 constexpr int kAiPrintOptionId = 7;
+constexpr int kAiAlarmOptionId = 1;
 constexpr int kSettingsOptionId = 12;
 constexpr int kBackTargetMainMenu = 0;
 constexpr int kBackTargetSettings = 1;
+constexpr int kBackTargetCamera = 2;
+constexpr int kBackTargetGallery = 3;
 
 lv_dir_t GetGestureDirection() {
     lv_indev_t* indev = lv_indev_active();
@@ -67,6 +70,7 @@ UiLcdDisplay::UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
         .skip_unhandled_events = true,
     };
     ESP_ERROR_CHECK(esp_timer_create(&camera_preview_timer_args, &camera_preview_timer_));
+    InitializeAlarmSupport();
 
     InitializeMainMenu();
 }
@@ -77,19 +81,12 @@ UiLcdDisplay::~UiLcdDisplay() {
         esp_timer_delete(camera_preview_timer_);
         camera_preview_timer_ = nullptr;
     }
+    DeinitializeAlarmSupport();
     BleHid::GetInstance().OnConnectionStateChanged({});
 }
 
 void UiLcdDisplay::SetCameraPreviewCallback(std::function<void()> callback) {
     camera_preview_callback_ = std::move(callback);
-}
-
-bool UiLcdDisplay::IsAiPrintActive() const {
-    return current_feature_option_id_ == kAiPrintOptionId;
-}
-
-bool UiLcdDisplay::HandleFeatureSpeechRecognized(const std::string& text) {
-    return AiPrintFeature::HandleSpeechRecognized(*this, text);
 }
 
 const char* UiLcdDisplay::GetMenuText(int option_id) const {
@@ -290,122 +287,6 @@ void UiLcdDisplay::RefreshMenuIconImages() {
     }
 }
 
-void UiLcdDisplay::ShowAiPrintListeningState() {
-    DisplayLockGuard lock(this);
-    if (preview_timer_ != nullptr) {
-        esp_timer_stop(preview_timer_);
-    }
-    preview_image_cached_.reset();
-
-    if (preview_image_ != nullptr) {
-        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (feature_background_image_ != nullptr) {
-        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_box_ != nullptr) {
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, "请直接说出你想画的内容\n例如：画一只戴围巾的大熊猫");
-    }
-}
-
-void UiLcdDisplay::ShowAiPrintGeneratingState() {
-    DisplayLockGuard lock(this);
-    if (preview_timer_ != nullptr) {
-        esp_timer_stop(preview_timer_);
-    }
-    preview_image_cached_.reset();
-
-    if (preview_image_ != nullptr) {
-        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (feature_background_image_ != nullptr) {
-        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_box_ != nullptr) {
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, "正在生成图片\n请稍候...");
-    }
-}
-
-void UiLcdDisplay::ShowAiPrintErrorState(const std::string& message) {
-    DisplayLockGuard lock(this);
-    if (preview_timer_ != nullptr) {
-        esp_timer_stop(preview_timer_);
-    }
-    preview_image_cached_.reset();
-
-    if (preview_image_ != nullptr) {
-        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (feature_background_image_ != nullptr) {
-        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_box_ != nullptr) {
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, message.c_str());
-    }
-}
-
-void UiLcdDisplay::ShowAiPrintResultImage(std::unique_ptr<LvglImage> image) {
-    if (image == nullptr) {
-        ShowAiPrintErrorState("图片生成成功\n但设备解码失败");
-        return;
-    }
-
-    DisplayLockGuard lock(this);
-    if (preview_timer_ != nullptr) {
-        esp_timer_stop(preview_timer_);
-    }
-
-    preview_image_cached_ = std::move(image);
-    if (preview_image_ == nullptr) {
-        return;
-    }
-
-    auto img_dsc = preview_image_cached_->image_dsc();
-    lv_image_set_src(preview_image_, img_dsc);
-
-    const lv_coord_t max_width = width_ - 24;
-    const lv_coord_t max_height = height_ - kStatusBarHeight - 28;
-    lv_coord_t scale = 256;
-    if (img_dsc->header.w > 0 && img_dsc->header.h > 0) {
-        const lv_coord_t scale_w = (max_width * 256) / img_dsc->header.w;
-        const lv_coord_t scale_h = (max_height * 256) / img_dsc->header.h;
-        scale = std::min(scale_w, scale_h);
-        if (scale > 256) {
-            scale = 256;
-        }
-        if (scale <= 0) {
-            scale = 1;
-        }
-    }
-
-    lv_image_set_scale(preview_image_, scale);
-    lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_align(preview_image_, LV_ALIGN_TOP_MID, 0, 10);
-    lv_obj_remove_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-
-    if (feature_background_image_ != nullptr) {
-        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_box_ != nullptr) {
-        lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (chat_message_label_ != nullptr) {
-        lv_label_set_text(chat_message_label_, "");
-    }
-}
-
 void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     current_feature_option_id_ = option_id;
 
@@ -575,6 +456,9 @@ void UiLcdDisplay::InitializeMainMenu() {
     RefreshMenuIconImages();
 
     MoveStatusBarToScreen(menu_screen_);
+    InitializeAlarmPanel();
+    ai_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
+    ai_back_button_ = CreateBackButton(ai_screen_, &ai_back_button_data_);
     lv_screen_load(menu_screen_);
 }
 
@@ -591,9 +475,6 @@ void UiLcdDisplay::InitializeCameraScreen() {
     lv_obj_set_style_bg_color(camera_screen_, lv_color_white(), 0);
     lv_obj_set_style_border_width(camera_screen_, 0, 0);
     lv_obj_set_style_pad_all(camera_screen_, 0, 0);
-    lv_obj_add_event_cb(camera_screen_, OnCameraScreenGesture, LV_EVENT_GESTURE, this);
-    lv_obj_clear_flag(camera_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
-
     camera_ble_status_label_ = lv_label_create(camera_screen_);
     lv_obj_set_size(camera_ble_status_label_, LV_HOR_RES, 30);
     lv_obj_align(camera_ble_status_label_, LV_ALIGN_BOTTOM_MID, 0, -105);
@@ -652,6 +533,8 @@ void UiLcdDisplay::InitializeCameraScreen() {
 
     current_camera_mode_ = CameraMode::kPhoto;
     UpdateCameraModeDisplay();
+    camera_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
+    CreateBackButton(camera_screen_, &camera_back_button_data_);
 }
 
 void UiLcdDisplay::InitializeGallery() {
@@ -665,15 +548,14 @@ void UiLcdDisplay::InitializeGallery() {
     lv_obj_set_style_bg_color(gallery_screen_, lv_color_white(), 0);
     lv_obj_set_style_border_width(gallery_screen_, 0, 0);
     lv_obj_set_style_pad_all(gallery_screen_, 0, 0);
-    lv_obj_add_event_cb(gallery_screen_, OnGalleryScreenGesture, LV_EVENT_GESTURE, this);
-    lv_obj_clear_flag(gallery_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
-
     gallery_list_ = lv_list_create(gallery_screen_);
     lv_obj_set_size(gallery_list_, LV_HOR_RES, LV_VER_RES - kStatusBarHeight);
     lv_obj_align(gallery_list_, LV_ALIGN_TOP_MID, 0, kStatusBarHeight);
     lv_obj_set_style_bg_color(gallery_list_, lv_color_white(), 0);
     lv_obj_set_style_border_width(gallery_list_, 0, 0);
     lv_obj_set_style_pad_all(gallery_list_, 0, 0);
+    gallery_back_button_data_ = BackButtonData{this, kBackTargetCamera};
+    CreateBackButton(gallery_screen_, &gallery_back_button_data_);
 }
 
 void UiLcdDisplay::InitializeSettingsScreen() {
@@ -690,8 +572,6 @@ void UiLcdDisplay::InitializeSettingsScreen() {
     lv_obj_set_style_border_width(settings_screen_, 0, 0);
     lv_obj_set_style_pad_all(settings_screen_, 0, 0);
     lv_obj_set_scrollbar_mode(settings_screen_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_add_event_cb(settings_screen_, OnSettingsScreenGesture, LV_EVENT_GESTURE, this);
-    lv_obj_clear_flag(settings_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
     settings_title_label_ = lv_label_create(settings_screen_);
     lv_label_set_text(settings_title_label_, GetSettingsTitle());
@@ -749,25 +629,8 @@ void UiLcdDisplay::InitializeSettingsScreen() {
         }
     }
 
-    lv_obj_t* back_btn = lv_btn_create(settings_screen_);
-    lv_obj_set_size(back_btn, 36, 36);
-    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 34);
-    lv_obj_set_style_radius(back_btn, 18, 0);
-    lv_obj_set_style_bg_color(back_btn, lv_color_white(), 0);
-    lv_obj_set_style_border_width(back_btn, 1, 0);
-    lv_obj_set_style_border_color(back_btn, lv_color_hex(0xD9D9D9), 0);
-    lv_obj_set_style_shadow_width(back_btn, 0, 0);
-    lv_obj_set_style_pad_all(back_btn, 0, 0);
-
-    lv_obj_t* back_label = lv_label_create(back_btn);
-    lv_label_set_text(back_label, "<");
-    lv_obj_center(back_label);
-    lv_obj_set_style_text_color(back_label, lv_color_black(), 0);
-    lv_obj_set_style_text_font(back_label, lvgl_theme->text_font()->font(), 0);
-
     settings_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
-    lv_obj_set_user_data(back_btn, &settings_back_button_data_);
-    lv_obj_add_event_cb(back_btn, OnBackButtonClicked, LV_EVENT_CLICKED, nullptr);
+    CreateBackButton(settings_screen_, &settings_back_button_data_);
 }
 
 void UiLcdDisplay::InitializeAboutScreen() {
@@ -784,8 +647,6 @@ void UiLcdDisplay::InitializeAboutScreen() {
     lv_obj_set_style_border_width(about_screen_, 0, 0);
     lv_obj_set_style_pad_all(about_screen_, 0, 0);
     lv_obj_set_scrollbar_mode(about_screen_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_add_event_cb(about_screen_, OnAboutScreenGesture, LV_EVENT_GESTURE, this);
-    lv_obj_clear_flag(about_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
     about_title_label_ = lv_label_create(about_screen_);
     lv_label_set_text(about_title_label_, GetAboutTitle());
@@ -829,25 +690,52 @@ void UiLcdDisplay::InitializeAboutScreen() {
         }
     }
 
-    lv_obj_t* back_btn = lv_btn_create(about_screen_);
-    lv_obj_set_size(back_btn, 36, 36);
-    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 34);
-    lv_obj_set_style_radius(back_btn, 18, 0);
-    lv_obj_set_style_bg_color(back_btn, lv_color_white(), 0);
-    lv_obj_set_style_border_width(back_btn, 1, 0);
-    lv_obj_set_style_border_color(back_btn, lv_color_hex(0xD9D9D9), 0);
-    lv_obj_set_style_shadow_width(back_btn, 0, 0);
-    lv_obj_set_style_pad_all(back_btn, 0, 0);
-
-    lv_obj_t* back_label = lv_label_create(back_btn);
-    lv_label_set_text(back_label, "<");
-    lv_obj_center(back_label);
-    lv_obj_set_style_text_color(back_label, lv_color_black(), 0);
-    lv_obj_set_style_text_font(back_label, lvgl_theme->text_font()->font(), 0);
-
     about_back_button_data_ = BackButtonData{this, kBackTargetSettings};
-    lv_obj_set_user_data(back_btn, &about_back_button_data_);
-    lv_obj_add_event_cb(back_btn, OnBackButtonClicked, LV_EVENT_CLICKED, nullptr);
+    CreateBackButton(about_screen_, &about_back_button_data_);
+}
+
+bool UiLcdDisplay::ShouldUseTransparentStatusBar(lv_obj_t* target_screen) const {
+    if (target_screen != ai_screen_) {
+        return false;
+    }
+
+    if (alarm_panel_ != nullptr && !lv_obj_has_flag(alarm_panel_, LV_OBJ_FLAG_HIDDEN)) {
+        return false;
+    }
+
+    return true;
+}
+
+void UiLcdDisplay::UpdateStatusBarAppearance(lv_obj_t* target_screen) {
+    if (status_bar_ == nullptr) {
+        return;
+    }
+
+    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
+    const bool transparent = ShouldUseTransparentStatusBar(target_screen);
+    const lv_opa_t background_opa = transparent ? LV_OPA_TRANSP : LV_OPA_50;
+    const lv_color_t background_color = lvgl_theme->background_color();
+    const lv_color_t text_color = lvgl_theme->text_color();
+
+    lv_obj_set_style_bg_color(status_bar_, background_color, 0);
+    lv_obj_set_style_bg_opa(status_bar_, background_opa, 0);
+    lv_obj_set_style_text_color(status_bar_, text_color, 0);
+
+    if (network_label_ != nullptr) {
+        lv_obj_set_style_text_color(network_label_, text_color, 0);
+    }
+    if (status_label_ != nullptr) {
+        lv_obj_set_style_text_color(status_label_, text_color, 0);
+    }
+    if (notification_label_ != nullptr) {
+        lv_obj_set_style_text_color(notification_label_, text_color, 0);
+    }
+    if (mute_label_ != nullptr) {
+        lv_obj_set_style_text_color(mute_label_, text_color, 0);
+    }
+    if (battery_label_ != nullptr) {
+        lv_obj_set_style_text_color(battery_label_, text_color, 0);
+    }
 }
 
 void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
@@ -856,9 +744,47 @@ void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
     }
 
     lv_obj_set_parent(status_bar_, target_screen);
+    UpdateStatusBarAppearance(target_screen);
     lv_obj_clear_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_move_foreground(status_bar_);
+}
+
+lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, BackButtonData* data, bool dark_surface) {
+    if (parent == nullptr || data == nullptr) {
+        return nullptr;
+    }
+
+    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
+    lv_obj_t* back_btn = lv_btn_create(parent);
+    lv_obj_set_size(back_btn, 60, 40);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, -18, 34);
+    lv_obj_set_style_radius(back_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(back_btn, dark_surface ? 0 : 1, 0);
+    lv_obj_set_style_border_color(back_btn, lv_color_hex(0xD4E2F0), 0);
+    lv_obj_set_style_pad_all(back_btn, 0, 0);
+    lv_obj_set_style_shadow_width(back_btn, dark_surface ? 0 : 16, 0);
+    lv_obj_set_style_shadow_opa(back_btn, dark_surface ? LV_OPA_0 : LV_OPA_20, 0);
+    lv_obj_set_style_shadow_color(back_btn, lv_color_hex(0x9DB6D4), 0);
+    lv_obj_set_style_bg_color(back_btn,
+                              dark_surface ? lv_color_hex(0x1C2430) : lv_color_hex(0xEEF5FC), 0);
+    lv_obj_set_style_bg_opa(back_btn, dark_surface ? LV_OPA_70 : LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(
+        back_btn, dark_surface ? lv_color_hex(0x111822) : lv_color_hex(0xDCEAF9), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(back_btn, dark_surface ? LV_OPA_80 : LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_add_flag(back_btn, LV_OBJ_FLAG_FLOATING);
+    lv_obj_set_user_data(back_btn, data);
+    lv_obj_add_event_cb(back_btn, OnBackButtonClicked, LV_EVENT_CLICKED, nullptr);
+
+    lv_obj_t* label = lv_label_create(back_btn);
+    lv_label_set_text(label, "<");
+    lv_obj_align(label, LV_ALIGN_CENTER, 6, -1);
+    lv_obj_set_style_text_font(label, lvgl_theme->text_font()->font(), 0);
+    lv_obj_set_style_text_color(label, dark_surface ? lv_color_white() : lv_color_hex(0x335F8A), 0);
+    lv_obj_set_style_text_letter_space(label, 0, 0);
+
+    lv_obj_move_foreground(back_btn);
+    return back_btn;
 }
 
 void UiLcdDisplay::StartCameraPreview(int interval_ms) {
@@ -970,6 +896,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
             lv_label_set_text(camera_ble_status_label_, "蓝牙启动失败，请返回重试");
         }
 
+        HideAlarmPanel();
         ClearFeatureVisual();
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
@@ -982,6 +909,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     if (option_id == kSettingsOptionId) {
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
+        HideAlarmPanel();
         ClearFeatureVisual();
         ShowSettingsScreen();
         return;
@@ -993,6 +921,11 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     }
 
     ApplyFeatureVisual(option_id);
+    if (option_id == kAiAlarmOptionId) {
+        ShowAlarmPanel();
+    } else {
+        HideAlarmPanel();
+    }
 
     {
         DisplayLockGuard lock(this);
@@ -1020,6 +953,7 @@ void UiLcdDisplay::ReturnToMainMenu() {
 
     gallery_swipe_enabled_ = false;
     StopCameraPreview();
+    HideAlarmPanel();
     ClearFeatureVisual();
     {
         DisplayLockGuard lock(this);
@@ -1030,6 +964,7 @@ void UiLcdDisplay::ReturnToMainMenu() {
 
 void UiLcdDisplay::ReturnToCameraScreen() {
     gallery_swipe_enabled_ = true;
+    HideAlarmPanel();
     ApplyFeatureVisual(kVisionOptionId);
     {
         DisplayLockGuard lock(this);
@@ -1218,14 +1153,13 @@ void UiLcdDisplay::ShowPhotoViewer(const char* filename) {
         lv_obj_set_style_bg_color(photo_viewer_screen_, lv_color_black(), 0);
         lv_obj_set_style_border_width(photo_viewer_screen_, 0, 0);
         lv_obj_set_style_pad_all(photo_viewer_screen_, 0, 0);
-        lv_obj_add_event_cb(photo_viewer_screen_, OnPhotoViewerGesture, LV_EVENT_GESTURE, this);
-        lv_obj_clear_flag(photo_viewer_screen_, LV_OBJ_FLAG_GESTURE_BUBBLE);
-
         photo_viewer_container_ = lv_obj_create(photo_viewer_screen_);
         lv_obj_set_size(photo_viewer_container_, LV_HOR_RES, LV_VER_RES);
         lv_obj_set_style_bg_color(photo_viewer_container_, lv_color_black(), 0);
         lv_obj_set_style_border_width(photo_viewer_container_, 0, 0);
         lv_obj_set_style_pad_all(photo_viewer_container_, 0, 0);
+        photo_viewer_back_button_data_ = BackButtonData{this, kBackTargetGallery};
+        CreateBackButton(photo_viewer_screen_, &photo_viewer_back_button_data_, true);
     }
 
     current_photo_image_.reset();
@@ -1408,46 +1342,29 @@ void UiLcdDisplay::OnAiScreenGesture(lv_event_t* e) {
     }
 
     lv_dir_t dir = GetGestureDirection();
-    if (dir == LV_DIR_RIGHT) {
-        display->ReturnToMainMenu();
-    } else if (dir == LV_DIR_LEFT && display->gallery_swipe_enabled_) {
+    if (dir == LV_DIR_LEFT && display->gallery_swipe_enabled_) {
         display->ShowGallery();
     }
 }
 
 void UiLcdDisplay::OnCameraScreenGesture(lv_event_t* e) {
-    auto* display = static_cast<UiLcdDisplay*>(lv_event_get_user_data(e));
-    if (display != nullptr && GetGestureDirection() == LV_DIR_RIGHT) {
-        display->ReturnToMainMenu();
-    }
+    (void)e;
 }
 
 void UiLcdDisplay::OnGalleryScreenGesture(lv_event_t* e) {
-    auto* display = static_cast<UiLcdDisplay*>(lv_event_get_user_data(e));
-    if (display != nullptr && GetGestureDirection() == LV_DIR_RIGHT) {
-        display->ReturnToCameraScreen();
-    }
+    (void)e;
 }
 
 void UiLcdDisplay::OnPhotoViewerGesture(lv_event_t* e) {
-    auto* display = static_cast<UiLcdDisplay*>(lv_event_get_user_data(e));
-    if (display != nullptr && GetGestureDirection() == LV_DIR_RIGHT) {
-        display->ShowGallery();
-    }
+    (void)e;
 }
 
 void UiLcdDisplay::OnSettingsScreenGesture(lv_event_t* e) {
-    auto* display = static_cast<UiLcdDisplay*>(lv_event_get_user_data(e));
-    if (display != nullptr && GetGestureDirection() == LV_DIR_RIGHT) {
-        display->ReturnToMainMenu();
-    }
+    (void)e;
 }
 
 void UiLcdDisplay::OnAboutScreenGesture(lv_event_t* e) {
-    auto* display = static_cast<UiLcdDisplay*>(lv_event_get_user_data(e));
-    if (display != nullptr && GetGestureDirection() == LV_DIR_RIGHT) {
-        display->ShowSettingsScreen();
-    }
+    (void)e;
 }
 
 void UiLcdDisplay::OnCameraModeButtonClicked(lv_event_t* e) {
@@ -1495,6 +1412,10 @@ void UiLcdDisplay::OnBackButtonClicked(lv_event_t* e) {
     if (data != nullptr && data->display != nullptr) {
         if (data->target == kBackTargetSettings) {
             data->display->ShowSettingsScreen();
+        } else if (data->target == kBackTargetCamera) {
+            data->display->ReturnToCameraScreen();
+        } else if (data->target == kBackTargetGallery) {
+            data->display->ShowGallery();
         } else {
             data->display->ReturnToMainMenu();
         }

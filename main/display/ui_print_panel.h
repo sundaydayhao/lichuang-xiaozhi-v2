@@ -1,11 +1,11 @@
-#ifndef AI_PRINT_FEATURE_H
-#define AI_PRINT_FEATURE_H
+#ifndef UI_PRINT_PANEL_H
+#define UI_PRINT_PANEL_H
 
 #include <string>
 
 class UiLcdDisplay;
 
-class AiPrintFeature {
+class UiPrintPanel {
 public:
     static bool HandleSpeechRecognized(UiLcdDisplay& display, const std::string& text);
 
@@ -15,4 +15,4 @@ private:
     static void RunTask(UiLcdDisplay& display, const std::string& prompt);
 };
 
-#endif // AI_PRINT_FEATURE_H
+#endif // UI_PRINT_PANEL_H
