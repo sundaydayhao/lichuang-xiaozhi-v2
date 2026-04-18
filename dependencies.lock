@@ -1,9 +1,13 @@
 dependencies:
   78/esp-ml307:
-    dependencies: []
+    component_hash: 57c8cc3309fb3da9195ec861cba3726b5cf24c362def803e7174c0b1d72e60e3
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.3'
     source:
-      path: /home/hao/projects/xiaozhi-esp32-zzx-2/components/78__esp-ml307
-      type: local
+      registry_url: https://components.espressif.com/
+      type: service
     version: 3.3.7
   78/esp-opus:
     component_hash: 8182b733f071d7bfe1e837f4c9f8649a63e4c937177f089e65772880c02f2e17
@@ -647,6 +651,6 @@ direct_dependencies:
 - waveshare/esp_lcd_sh8601
 - waveshare/esp_lcd_touch_cst9217
 - wvirgil123/sscma_client
-manifest_hash: 86309d100d10b474096a74f51ec989aac69670b98d763be0586db85db9950c84
+manifest_hash: 953ba7eaad6a69b721aa4e5dca0dc20af609d5e3f2866dfe9280c9940dc4621a
 target: esp32s3
 version: 2.0.0
