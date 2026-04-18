@@ -18,6 +18,15 @@ constexpr int kStatusBarHeight = 27;
 constexpr int kAlarmRingSegmentCount = 24;
 constexpr std::array<const char*, 7> kWeekdayShortNames = {"日", "一", "二", "三", "四", "五", "六"};
 
+lv_obj_t* TakeValidObject(lv_obj_t*& object) {
+    if (object != nullptr && lv_obj_is_valid(object)) {
+        return object;
+    }
+
+    object = nullptr;
+    return nullptr;
+}
+
 std::string FormatCurrentTimeForDisplay(bool has_valid_time, time_t now) {
     if (!has_valid_time) {
         return "--:--";
@@ -58,6 +67,22 @@ std::string FormatCurrentWeekdayForDisplay(bool has_valid_time, time_t now) {
 }
 
 } // namespace
+
+void UiLcdDisplay::ResetAlarmPanelObjects() {
+    alarm_panel_ = nullptr;
+    alarm_subtitle_label_ = nullptr;
+    alarm_now_time_label_ = nullptr;
+    alarm_date_label_ = nullptr;
+    alarm_hint_label_ = nullptr;
+    alarm_next_icon_label_ = nullptr;
+    alarm_next_time_label_ = nullptr;
+    alarm_ring_frame_ = nullptr;
+    alarm_ring_inner_ = nullptr;
+    alarm_clock_time_label_ = nullptr;
+    alarm_countdown_label_ = nullptr;
+    alarm_hourglass_label_ = nullptr;
+    alarm_ring_segments_.fill(nullptr);
+}
 
 void UiLcdDisplay::InitializeAlarmSupport() {
     esp_timer_create_args_t alarm_ui_timer_args = {
@@ -107,7 +132,15 @@ void UiLcdDisplay::StopAlarmUiRefresh() {
 }
 
 void UiLcdDisplay::InitializeAlarmPanel() {
-    if (ai_screen_ == nullptr || alarm_panel_ != nullptr) {
+    if (ai_screen_ == nullptr) {
+        return;
+    }
+
+    if (alarm_panel_ != nullptr && !lv_obj_is_valid(alarm_panel_)) {
+        ResetAlarmPanelObjects();
+    }
+
+    if (alarm_panel_ != nullptr) {
         return;
     }
 
@@ -203,13 +236,19 @@ void UiLcdDisplay::InitializeAlarmPanel() {
 }
 
 void UiLcdDisplay::RefreshAlarmUi() {
-    if (alarm_panel_ == nullptr || lv_obj_has_flag(alarm_panel_, LV_OBJ_FLAG_HIDDEN)) {
+    lv_obj_t* alarm_panel = TakeValidObject(alarm_panel_);
+    if (alarm_panel == nullptr) {
+        ResetAlarmPanelObjects();
+        return;
+    }
+
+    if (lv_obj_has_flag(alarm_panel, LV_OBJ_FLAG_HIDDEN)) {
         return;
     }
 
     DisplayLockGuard lock(this);
-    const lv_coord_t panel_w = lv_obj_get_width(alarm_panel_);
-    const lv_coord_t panel_h = lv_obj_get_height(alarm_panel_);
+    const lv_coord_t panel_w = lv_obj_get_width(alarm_panel);
+    const lv_coord_t panel_h = lv_obj_get_height(alarm_panel);
     if (panel_w <= 0 || panel_h <= 0) {
         return;
     }
@@ -338,10 +377,16 @@ void UiLcdDisplay::RefreshAlarmUi() {
 }
 
 void UiLcdDisplay::ShowAlarmPanel() {
+    if (alarm_panel_ != nullptr && !lv_obj_is_valid(alarm_panel_)) {
+        ResetAlarmPanelObjects();
+    }
+
     if (alarm_panel_ == nullptr) {
         InitializeAlarmPanel();
     }
-    if (alarm_panel_ == nullptr) {
+    lv_obj_t* alarm_panel = TakeValidObject(alarm_panel_);
+    if (alarm_panel == nullptr) {
+        ResetAlarmPanelObjects();
         return;
     }
 
@@ -357,12 +402,13 @@ void UiLcdDisplay::ShowAlarmPanel() {
         if (emoji_box_ != nullptr) {
             lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
         }
-        if (chat_message_label_ != nullptr) {
-            lv_label_set_text(chat_message_label_, "");
-            lv_obj_add_flag(chat_message_label_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
+        if (chat_label != nullptr) {
+            lv_label_set_text(chat_label, "");
+            lv_obj_add_flag(chat_label, LV_OBJ_FLAG_HIDDEN);
         }
-        lv_obj_clear_flag(alarm_panel_, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(alarm_panel_);
+        lv_obj_clear_flag(alarm_panel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(alarm_panel);
         if (ai_back_button_ != nullptr && lv_obj_is_valid(ai_back_button_)) {
             lv_obj_move_foreground(ai_back_button_);
         }
@@ -372,13 +418,17 @@ void UiLcdDisplay::ShowAlarmPanel() {
 
 void UiLcdDisplay::HideAlarmPanel() {
     StopAlarmUiRefresh();
-    if (alarm_panel_ == nullptr) {
+    lv_obj_t* alarm_panel = TakeValidObject(alarm_panel_);
+    if (alarm_panel == nullptr) {
+        ResetAlarmPanelObjects();
         return;
     }
 
     DisplayLockGuard lock(this);
-    lv_obj_add_flag(alarm_panel_, LV_OBJ_FLAG_HIDDEN);
-    if (chat_message_label_ != nullptr) {
-        lv_obj_clear_flag(chat_message_label_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(alarm_panel, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
+    if (chat_label != nullptr) {
+        lv_obj_clear_flag(chat_label, LV_OBJ_FLAG_HIDDEN);
     }
 }

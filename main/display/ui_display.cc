@@ -1222,9 +1222,14 @@ void UiLcdDisplay::InitializeAboutScreen() {
     CreateBackButton(about_screen_, &about_back_button_data_);
 }
 
-bool UiLcdDisplay::ShouldUseTransparentStatusBar(lv_obj_t* target_screen) const {
+bool UiLcdDisplay::ShouldUseTransparentStatusBar(lv_obj_t* target_screen) {
     if (target_screen != ai_screen_) {
         return false;
+    }
+
+    if (alarm_panel_ != nullptr && !lv_obj_is_valid(alarm_panel_)) {
+        ResetAlarmPanelObjects();
+        return true;
     }
 
     if (alarm_panel_ != nullptr && !lv_obj_has_flag(alarm_panel_, LV_OBJ_FLAG_HIDDEN)) {
@@ -1421,6 +1426,11 @@ void UiLcdDisplay::RefreshAboutScreenTexts() {
 void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     ESP_LOGI(TAG, "Menu option %d clicked", option_id);
 
+    if (Application::GetInstance().GetDeviceState() == kDeviceStateFatalError) {
+        ESP_LOGW(TAG, "Ignoring menu option %d while fatal error recovery is in progress", option_id);
+        return;
+    }
+
     if (option_id < 1 || option_id > static_cast<int>(kMenuItemCount)) {
         return;
     }
@@ -1490,7 +1500,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     }
 
     if (lv_screen_active() == camera_screen_) {
-        BleHid::GetInstance().SetScreenActive(false);
+        CleanupRemoteSelfie();
         ResumeAudioAfterRemoteSelfie();
     }
 
@@ -1536,7 +1546,7 @@ void UiLcdDisplay::ReturnToMainMenu() {
     ExitDialogueScene(true);
     SetPreviewPresentationMode(PreviewPresentationMode::kChatBubble);
     if (lv_screen_active() == camera_screen_) {
-        BleHid::GetInstance().SetScreenActive(false);
+        CleanupRemoteSelfie();
         ResumeAudioAfterRemoteSelfie();
     }
 
@@ -1652,6 +1662,13 @@ void UiLcdDisplay::ResumeAudioAfterRemoteSelfie() {
 
     Application::GetInstance().ResumeAudioAfterFeature();
     remote_selfie_audio_suspended_ = false;
+}
+
+void UiLcdDisplay::CleanupRemoteSelfie() {
+    auto& ble_hid = BleHid::GetInstance();
+    ble_hid.OnConnectionStateChanged({});
+    ble_hid.SetScreenActive(false);
+    ble_hid.Deinitialize();
 }
 
 void UiLcdDisplay::UpdateCameraBleStatus(bool connected) {

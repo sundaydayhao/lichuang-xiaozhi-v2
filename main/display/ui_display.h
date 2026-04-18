@@ -244,7 +244,7 @@ private:
     void InitializeAlarmPanel();
     void InitializeSleepMusicScreen();
     void UpdateStatusBarAppearance(lv_obj_t* target_screen);
-    bool ShouldUseTransparentStatusBar(lv_obj_t* target_screen) const;
+    bool ShouldUseTransparentStatusBar(lv_obj_t* target_screen);
     void MoveStatusBarToScreen(lv_obj_t* target_screen);
     lv_obj_t* CreateBackButton(lv_obj_t* parent, BackButtonData* data, bool dark_surface = false);
 
@@ -252,6 +252,7 @@ private:
     void StopCameraPreview();
     void StartAlarmUiRefresh();
     void StopAlarmUiRefresh();
+    void ResetAlarmPanelObjects();
     void RefreshAlarmUi();
     void ShowAlarmPanel();
     void HideAlarmPanel();
@@ -267,6 +268,7 @@ private:
     void ExecuteCameraAction();
     void SuspendAudioForRemoteSelfie();
     void ResumeAudioAfterRemoteSelfie();
+    void CleanupRemoteSelfie();
     void UpdateCameraBleStatus(bool connected);
     void ShowAiPrintListeningState();
     void ShowAiPrintGeneratingState();
