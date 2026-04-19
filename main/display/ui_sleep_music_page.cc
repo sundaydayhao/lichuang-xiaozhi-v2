@@ -76,32 +76,23 @@ std::vector<int16_t> GenerateSleepMusicChunk(int selected_mode_index, int select
 
 } // namespace
 
-void UiLcdDisplay::InitializeSleepMusicSupport() {
-    esp_timer_create_args_t sleep_music_timer_args = {
-        .callback = [](void* arg) {
-            auto* display = static_cast<UiLcdDisplay*>(arg);
-            if (display != nullptr) {
-                display->HandleSleepMusicTick();
-            }
-        },
-        .arg = this,
-        .dispatch_method = ESP_TIMER_TASK,
-        .name = "sleep_music_ui_timer",
-        .skip_unhandled_events = true,
-    };
-    ESP_ERROR_CHECK(esp_timer_create(&sleep_music_timer_args, &sleep_music_timer_));
-}
-
-void UiLcdDisplay::DeinitializeSleepMusicSupport() {
-    StopSleepMusicPlayback(false);
-    DestroySleepMusicScreen();
-    if (sleep_music_timer_ != nullptr) {
-        esp_timer_delete(sleep_music_timer_);
-        sleep_music_timer_ = nullptr;
+void UiLcdDisplay::AllocateSleepMusicPageResources() {
+    if (sleep_music_timer_ == nullptr) {
+        esp_timer_create_args_t sleep_music_timer_args = {
+            .callback = [](void* arg) {
+                auto* display = static_cast<UiLcdDisplay*>(arg);
+                if (display != nullptr) {
+                    display->HandleSleepMusicTick();
+                }
+            },
+            .arg = this,
+            .dispatch_method = ESP_TIMER_TASK,
+            .name = "sleep_music_ui_timer",
+            .skip_unhandled_events = true,
+        };
+        ESP_ERROR_CHECK(esp_timer_create(&sleep_music_timer_args, &sleep_music_timer_));
     }
-}
 
-void UiLcdDisplay::InitializeSleepMusicScreen() {
     if (sleep_music_screen_ != nullptr) {
         return;
     }
@@ -270,16 +261,13 @@ void UiLcdDisplay::InitializeSleepMusicScreen() {
     RefreshSleepMusicScreen();
 }
 
-void UiLcdDisplay::ShowSleepMusicScreen() {
-    if (sleep_music_screen_ == nullptr) {
-        InitializeSleepMusicScreen();
+void UiLcdDisplay::FreeSleepMusicPageResources() {
+    StopSleepMusicPlayback(false);
+    if (sleep_music_timer_ != nullptr) {
+        esp_timer_delete(sleep_music_timer_);
+        sleep_music_timer_ = nullptr;
     }
 
-    RefreshSleepMusicScreen();
-    LoadScreen(sleep_music_screen_);
-}
-
-void UiLcdDisplay::DestroySleepMusicScreen() {
     DisplayLockGuard lock(this);
     if (sleep_music_screen_ != nullptr) {
         lv_obj_del(sleep_music_screen_);
@@ -295,6 +283,25 @@ void UiLcdDisplay::DestroySleepMusicScreen() {
     sleep_music_countdown_label_ = nullptr;
     sleep_music_action_button_ = nullptr;
     sleep_music_action_label_ = nullptr;
+
+    sleep_music_selected_mode_index_ = 0;
+    sleep_music_selected_duration_index_ = 0;
+    sleep_music_playing_ = false;
+    sleep_music_remaining_seconds_ = 0;
+    sleep_music_noise_seed_ = 0x13572468u;
+}
+
+void UiLcdDisplay::ShowSleepMusicScreen() {
+    if (sleep_music_timer_ == nullptr) {
+        AllocateSleepMusicPageResources();
+    }
+
+    if (sleep_music_screen_ == nullptr) {
+        AllocateSleepMusicPageResources();
+    }
+
+    RefreshSleepMusicScreen();
+    LoadScreen(sleep_music_screen_);
 }
 
 void UiLcdDisplay::RefreshSleepMusicScreen() {
