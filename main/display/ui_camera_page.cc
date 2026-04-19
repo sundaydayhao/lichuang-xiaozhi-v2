@@ -12,7 +12,7 @@ constexpr int kMenuIconOriginalSize = 48;
 
 }
 
-void UiLcdDisplay::AllocateCameraPageResources() {
+void UiLcdDisplay::InitializeCameraScreen() {
     DisplayLockGuard lock(this);
 
     if (camera_screen_ != nullptr) {
@@ -85,6 +85,18 @@ void UiLcdDisplay::AllocateCameraPageResources() {
     UpdateCameraModeDisplay();
     camera_back_button_data_ = BackButtonData{this, 0};
     CreateBackButton(camera_screen_, &camera_back_button_data_);
+}
+
+void UiLcdDisplay::DestroyCameraScreen() {
+    DisplayLockGuard lock(this);
+    if (camera_screen_ != nullptr) {
+        lv_obj_del(camera_screen_);
+        camera_screen_ = nullptr;
+    }
+    camera_mode_btn_left_ = nullptr;
+    camera_mode_btn_center_ = nullptr;
+    camera_mode_btn_right_ = nullptr;
+    camera_ble_status_label_ = nullptr;
 }
 
 void UiLcdDisplay::ReturnToCameraScreen() {

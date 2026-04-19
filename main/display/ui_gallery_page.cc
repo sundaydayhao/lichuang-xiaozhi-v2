@@ -16,7 +16,7 @@ const char* TAG = "CompactDisplay";
 
 }
 
-void UiLcdDisplay::AllocateGalleryPageResources() {
+void UiLcdDisplay::InitializeGallery() {
     DisplayLockGuard lock(this);
 
     if (gallery_screen_ != nullptr) {
@@ -37,7 +37,7 @@ void UiLcdDisplay::AllocateGalleryPageResources() {
     CreateBackButton(gallery_screen_, &gallery_back_button_data_);
 }
 
-void UiLcdDisplay::FreeGalleryPageResources() {
+void UiLcdDisplay::DestroyGalleryScreen() {
     DisplayLockGuard lock(this);
     if (gallery_screen_ != nullptr) {
         lv_obj_del(gallery_screen_);
@@ -53,7 +53,7 @@ void UiLcdDisplay::ShowGallery() {
     StopCameraPreview();
 
     if (gallery_screen_ == nullptr) {
-        AllocateGalleryPageResources();
+        InitializeGallery();
     }
 
     RefreshGalleryList();
@@ -123,7 +123,19 @@ void UiLcdDisplay::RefreshGalleryList() {
 void UiLcdDisplay::ShowPhotoViewer(const char* filename) {
     {
         DisplayLockGuard lock(this);
-        AllocatePhotoViewerPageResources();
+        if (photo_viewer_screen_ == nullptr) {
+            photo_viewer_screen_ = lv_obj_create(nullptr);
+            lv_obj_set_style_bg_color(photo_viewer_screen_, lv_color_black(), 0);
+            lv_obj_set_style_border_width(photo_viewer_screen_, 0, 0);
+            lv_obj_set_style_pad_all(photo_viewer_screen_, 0, 0);
+            photo_viewer_container_ = lv_obj_create(photo_viewer_screen_);
+            lv_obj_set_size(photo_viewer_container_, LV_HOR_RES, LV_VER_RES);
+            lv_obj_set_style_bg_color(photo_viewer_container_, lv_color_black(), 0);
+            lv_obj_set_style_border_width(photo_viewer_container_, 0, 0);
+            lv_obj_set_style_pad_all(photo_viewer_container_, 0, 0);
+            photo_viewer_back_button_data_ = BackButtonData{this, 3};
+            CreateBackButton(photo_viewer_screen_, &photo_viewer_back_button_data_, true);
+        }
 
         current_photo_image_.reset();
         current_photo_img_ = nullptr;
@@ -140,26 +152,7 @@ void UiLcdDisplay::ShowPhotoViewer(const char* filename) {
     LoadScreen(photo_viewer_screen_);
 }
 
-void UiLcdDisplay::AllocatePhotoViewerPageResources() {
-    if (photo_viewer_screen_ != nullptr) {
-        return;
-    }
-
-    DisplayLockGuard lock(this);
-    photo_viewer_screen_ = lv_obj_create(nullptr);
-    lv_obj_set_style_bg_color(photo_viewer_screen_, lv_color_black(), 0);
-    lv_obj_set_style_border_width(photo_viewer_screen_, 0, 0);
-    lv_obj_set_style_pad_all(photo_viewer_screen_, 0, 0);
-    photo_viewer_container_ = lv_obj_create(photo_viewer_screen_);
-    lv_obj_set_size(photo_viewer_container_, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_style_bg_color(photo_viewer_container_, lv_color_black(), 0);
-    lv_obj_set_style_border_width(photo_viewer_container_, 0, 0);
-    lv_obj_set_style_pad_all(photo_viewer_container_, 0, 0);
-    photo_viewer_back_button_data_ = BackButtonData{this, 3};
-    CreateBackButton(photo_viewer_screen_, &photo_viewer_back_button_data_, true);
-}
-
-void UiLcdDisplay::FreePhotoViewerPageResources() {
+void UiLcdDisplay::DestroyPhotoViewerScreen() {
     current_photo_image_.reset();
     current_photo_img_ = nullptr;
 

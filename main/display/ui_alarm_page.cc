@@ -146,17 +146,24 @@ void UiLcdDisplay::ResetAlarmPanelObjects() {
     alarm_countdown_last_remaining_seconds_ = -1;
 }
 
-void UiLcdDisplay::FreeAlarmPageResources() {
+void UiLcdDisplay::InitializeAlarmSupport() {
+    esp_timer_create_args_t alarm_ui_timer_args = {
+        .callback = [](void* arg) {
+            auto* display = static_cast<UiLcdDisplay*>(arg);
+            if (display != nullptr) {
+                display->RefreshAlarmUi();
+            }
+        },
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "alarm_ui_timer",
+        .skip_unhandled_events = true,
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&alarm_ui_timer_args, &alarm_ui_timer_));
+}
+
+void UiLcdDisplay::DeinitializeAlarmSupport() {
     StopAlarmUiRefresh();
-
-    {
-        DisplayLockGuard lock(this);
-        if (alarm_panel_ != nullptr && lv_obj_is_valid(alarm_panel_)) {
-            lv_obj_del(alarm_panel_);
-        }
-    }
-    ResetAlarmPanelObjects();
-
     if (alarm_ui_timer_ != nullptr) {
         esp_timer_delete(alarm_ui_timer_);
         alarm_ui_timer_ = nullptr;
@@ -186,23 +193,7 @@ void UiLcdDisplay::StopAlarmUiRefresh() {
     }
 }
 
-void UiLcdDisplay::AllocateAlarmPageResources() {
-    if (alarm_ui_timer_ == nullptr) {
-        esp_timer_create_args_t alarm_ui_timer_args = {
-            .callback = [](void* arg) {
-                auto* display = static_cast<UiLcdDisplay*>(arg);
-                if (display != nullptr) {
-                    display->RefreshAlarmUi();
-                }
-            },
-            .arg = this,
-            .dispatch_method = ESP_TIMER_TASK,
-            .name = "alarm_ui_timer",
-            .skip_unhandled_events = true,
-        };
-        ESP_ERROR_CHECK(esp_timer_create(&alarm_ui_timer_args, &alarm_ui_timer_));
-    }
-
+void UiLcdDisplay::InitializeAlarmPanel() {
     if (ai_screen_ == nullptr) {
         return;
     }
@@ -474,7 +465,13 @@ void UiLcdDisplay::RefreshAlarmUi() {
 }
 
 void UiLcdDisplay::ShowAlarmPanel() {
-    AllocateAlarmPageResources();
+    if (alarm_panel_ != nullptr && !lv_obj_is_valid(alarm_panel_)) {
+        ResetAlarmPanelObjects();
+    }
+
+    if (alarm_panel_ == nullptr) {
+        InitializeAlarmPanel();
+    }
     lv_obj_t* alarm_panel = TakeValidObject(alarm_panel_);
     if (alarm_panel == nullptr) {
         ResetAlarmPanelObjects();

@@ -167,7 +167,7 @@ std::string UiLcdDisplay::GetUuidForDisplay() const {
     return uuid.empty() ? "unknown" : uuid;
 }
 
-void UiLcdDisplay::AllocateSettingsPageResources() {
+void UiLcdDisplay::InitializeSettingsScreen() {
     DisplayLockGuard lock(this);
 
     if (settings_screen_ != nullptr) {
@@ -242,7 +242,7 @@ void UiLcdDisplay::AllocateSettingsPageResources() {
     CreateBackButton(settings_screen_, &settings_back_button_data_);
 }
 
-void UiLcdDisplay::AllocateNetworkSwitchPageResources() {
+void UiLcdDisplay::InitializeNetworkSwitchScreen() {
     DisplayLockGuard lock(this);
 
     if (network_switch_screen_ != nullptr) {
@@ -324,7 +324,7 @@ void UiLcdDisplay::AllocateNetworkSwitchPageResources() {
     CreateBackButton(network_switch_screen_, &network_switch_back_button_data_);
 }
 
-void UiLcdDisplay::AllocateServerSwitchPageResources() {
+void UiLcdDisplay::InitializeServerSwitchScreen() {
     DisplayLockGuard lock(this);
 
     if (server_switch_screen_ != nullptr) {
@@ -400,7 +400,7 @@ void UiLcdDisplay::AllocateServerSwitchPageResources() {
     CreateBackButton(server_switch_screen_, &server_switch_back_button_data_);
 }
 
-void UiLcdDisplay::AllocateAboutPageResources() {
+void UiLcdDisplay::InitializeAboutScreen() {
     DisplayLockGuard lock(this);
 
     if (about_screen_ != nullptr) {
@@ -461,7 +461,7 @@ void UiLcdDisplay::AllocateAboutPageResources() {
     CreateBackButton(about_screen_, &about_back_button_data_);
 }
 
-void UiLcdDisplay::FreeAboutPageResources() {
+void UiLcdDisplay::DestroyAboutScreen() {
     DisplayLockGuard lock(this);
     if (about_screen_ != nullptr) {
         lv_obj_del(about_screen_);
@@ -477,7 +477,7 @@ void UiLcdDisplay::FreeAboutPageResources() {
 
 void UiLcdDisplay::ShowAboutScreen() {
     if (about_screen_ == nullptr) {
-        AllocateAboutPageResources();
+        InitializeAboutScreen();
     }
 
     RefreshAboutScreenTexts();
@@ -533,7 +533,7 @@ void UiLcdDisplay::RefreshAboutScreenTexts() {
     lv_obj_update_layout(about_content_);
 }
 
-void UiLcdDisplay::AllocateLanguageSwitchPageResources() {
+void UiLcdDisplay::InitializeLanguageSwitchScreen() {
     DisplayLockGuard lock(this);
 
     if (language_switch_screen_ != nullptr) {
@@ -611,7 +611,7 @@ void UiLcdDisplay::AllocateLanguageSwitchPageResources() {
 
 void UiLcdDisplay::ShowSettingsScreen() {
     if (settings_screen_ == nullptr) {
-        AllocateSettingsPageResources();
+        InitializeSettingsScreen();
     }
 
     LoadScreen(settings_screen_);
@@ -619,7 +619,7 @@ void UiLcdDisplay::ShowSettingsScreen() {
 
 void UiLcdDisplay::ShowNetworkSwitchScreen() {
     if (network_switch_screen_ == nullptr) {
-        AllocateNetworkSwitchPageResources();
+        InitializeNetworkSwitchScreen();
     }
 
     RefreshNetworkSwitchScreen();
@@ -628,7 +628,7 @@ void UiLcdDisplay::ShowNetworkSwitchScreen() {
 
 void UiLcdDisplay::ShowServerSwitchScreen() {
     if (server_switch_screen_ == nullptr) {
-        AllocateServerSwitchPageResources();
+        InitializeServerSwitchScreen();
     }
 
     RefreshServerSwitchScreen();
@@ -637,14 +637,14 @@ void UiLcdDisplay::ShowServerSwitchScreen() {
 
 void UiLcdDisplay::ShowLanguageSwitchScreen() {
     if (language_switch_screen_ == nullptr) {
-        AllocateLanguageSwitchPageResources();
+        InitializeLanguageSwitchScreen();
     }
 
     RefreshLanguageSwitchScreen();
     LoadScreen(language_switch_screen_);
 }
 
-void UiLcdDisplay::FreeSettingsPageResources() {
+void UiLcdDisplay::DestroySettingsScreen() {
     DisplayLockGuard lock(this);
     if (settings_screen_ != nullptr) {
         lv_obj_del(settings_screen_);
@@ -655,7 +655,7 @@ void UiLcdDisplay::FreeSettingsPageResources() {
     settings_item_name_labels_.fill(nullptr);
 }
 
-void UiLcdDisplay::FreeNetworkSwitchPageResources() {
+void UiLcdDisplay::DestroyNetworkSwitchScreen() {
     DisplayLockGuard lock(this);
     if (network_switch_screen_ != nullptr) {
         lv_obj_del(network_switch_screen_);
@@ -669,7 +669,7 @@ void UiLcdDisplay::FreeNetworkSwitchPageResources() {
     network_switch_option_state_labels_.fill(nullptr);
 }
 
-void UiLcdDisplay::FreeServerSwitchPageResources() {
+void UiLcdDisplay::DestroyServerSwitchScreen() {
     DisplayLockGuard lock(this);
     if (server_switch_screen_ != nullptr) {
         lv_obj_del(server_switch_screen_);
@@ -682,7 +682,7 @@ void UiLcdDisplay::FreeServerSwitchPageResources() {
     server_switch_option_state_labels_.fill(nullptr);
 }
 
-void UiLcdDisplay::FreeLanguageSwitchPageResources() {
+void UiLcdDisplay::DestroyLanguageSwitchScreen() {
     DisplayLockGuard lock(this);
     if (language_switch_screen_ != nullptr) {
         lv_obj_del(language_switch_screen_);

@@ -135,6 +135,9 @@ UiLcdDisplay::UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
         .skip_unhandled_events = true,
     };
     ESP_ERROR_CHECK(esp_timer_create(&dialogue_scene_timer_args, &dialogue_scene_timer_));
+    InitializeAlarmSupport();
+    InitializeWordDictationSupport();
+    InitializeSleepMusicSupport();
 
     InitializeMainMenu();
 }
@@ -150,9 +153,9 @@ UiLcdDisplay::~UiLcdDisplay() {
         esp_timer_delete(dialogue_scene_timer_);
         dialogue_scene_timer_ = nullptr;
     }
-    FreeSleepMusicPageResources();
-    FreeWordDictationPageResources();
-    FreeAlarmPageResources();
+    DeinitializeSleepMusicSupport();
+    DeinitializeWordDictationSupport();
+    DeinitializeAlarmSupport();
     BleHid::GetInstance().OnConnectionStateChanged({});
 }
 
@@ -168,75 +171,37 @@ void UiLcdDisplay::LoadScreen(lv_obj_t* target_screen) {
         MoveStatusBarToScreen(target_screen);
     }
 
-    FreePageResources(previous_screen, target_screen);
+    ReleaseScreenResources(previous_screen, target_screen);
 }
 
-void UiLcdDisplay::FreePageResources(lv_obj_t* previous_screen, lv_obj_t* target_screen) {
+void UiLcdDisplay::ReleaseScreenResources(lv_obj_t* previous_screen, lv_obj_t* target_screen) {
     previous_screen = TakeValidObject(previous_screen);
     target_screen = TakeValidObject(target_screen);
     if (previous_screen == nullptr || previous_screen == target_screen) {
         return;
     }
 
-    if (previous_screen == ai_screen_) {
-        FreeAiPageResources();
-    } else if (previous_screen == settings_screen_) {
-        FreeSettingsPageResources();
+    if (previous_screen == settings_screen_) {
+        DestroySettingsScreen();
     } else if (previous_screen == network_switch_screen_) {
-        FreeNetworkSwitchPageResources();
+        DestroyNetworkSwitchScreen();
     } else if (previous_screen == server_switch_screen_) {
-        FreeServerSwitchPageResources();
+        DestroyServerSwitchScreen();
     } else if (previous_screen == language_switch_screen_) {
-        FreeLanguageSwitchPageResources();
+        DestroyLanguageSwitchScreen();
     } else if (previous_screen == about_screen_) {
-        FreeAboutPageResources();
+        DestroyAboutScreen();
     } else if (previous_screen == camera_screen_) {
-        FreeCameraPageResources();
+        DestroyCameraScreen();
     } else if (previous_screen == gallery_screen_) {
-        FreeGalleryPageResources();
+        DestroyGalleryScreen();
     } else if (previous_screen == photo_viewer_screen_) {
-        FreePhotoViewerPageResources();
+        DestroyPhotoViewerScreen();
     } else if (previous_screen == word_dictation_screen_) {
-        FreeWordDictationPageResources();
+        DestroyWordDictationScreen();
     } else if (previous_screen == sleep_music_screen_) {
-        FreeSleepMusicPageResources();
+        DestroySleepMusicScreen();
     }
-}
-
-void UiLcdDisplay::FreeAiPageResources() {
-    StopCameraPreview();
-    HideAlarmPanel();
-    FreeAlarmPageResources();
-    ExitDialogueScene(true);
-
-    DisplayLockGuard lock(this);
-    if (ai_print_message_label_ != nullptr && lv_obj_is_valid(ai_print_message_label_)) {
-        lv_obj_del(ai_print_message_label_);
-    }
-    ai_print_message_label_ = nullptr;
-
-    if (magic_mirror_intro_container_ != nullptr && lv_obj_is_valid(magic_mirror_intro_container_)) {
-        lv_obj_del(magic_mirror_intro_container_);
-    }
-    magic_mirror_intro_container_ = nullptr;
-    magic_mirror_intro_emoji_ = nullptr;
-    magic_mirror_intro_text_ = nullptr;
-}
-
-void UiLcdDisplay::FreeCameraPageResources() {
-    CleanupRemoteSelfie();
-    ResumeAudioAfterRemoteSelfie();
-    is_recording_ = false;
-    current_camera_mode_ = CameraMode::kPhoto;
-    DisplayLockGuard lock(this);
-    if (camera_screen_ != nullptr) {
-        lv_obj_del(camera_screen_);
-        camera_screen_ = nullptr;
-    }
-    camera_mode_btn_left_ = nullptr;
-    camera_mode_btn_center_ = nullptr;
-    camera_mode_btn_right_ = nullptr;
-    camera_ble_status_label_ = nullptr;
 }
 
 void UiLcdDisplay::SetEmotion(const char* emotion) {
@@ -874,6 +839,8 @@ void UiLcdDisplay::InitializeMainMenu() {
     lv_obj_set_style_text_color(vision_ai_badge_label, lv_color_white(), 0);
     lv_obj_set_style_text_letter_space(vision_ai_badge_label, 1, 0);
 
+    InitializeMagicMirrorIntro();
+
     menu_screen_ = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(menu_screen_, lvgl_theme->background_color(), 0);
     lv_obj_set_style_border_width(menu_screen_, 0, 0);
@@ -960,6 +927,7 @@ void UiLcdDisplay::InitializeMainMenu() {
     RefreshMenuIconImages();
 
     MoveStatusBarToScreen(menu_screen_);
+    InitializeAlarmPanel();
     ai_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
     ai_back_button_ = CreateBackButton(ai_screen_, &ai_back_button_data_);
     UpdateVisionAiBadgeVisibility();
@@ -1134,7 +1102,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 
     if (option_id == kRemoteSelfieOptionId) {
         if (camera_screen_ == nullptr) {
-            AllocateCameraPageResources();
+            InitializeCameraScreen();
         }
         SuspendAudioForRemoteSelfie();
         auto& ble_hid = BleHid::GetInstance();
@@ -1222,7 +1190,13 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 }
 
 void UiLcdDisplay::ReturnToMainMenu() {
+    ExitDialogueScene(true);
     SetPreviewPresentationMode(PreviewPresentationMode::kChatBubble);
+    if (lv_screen_active() == camera_screen_) {
+        CleanupRemoteSelfie();
+        ResumeAudioAfterRemoteSelfie();
+    }
+
     StopWordDictationPlayback();
     StopSleepMusicPlayback(false);
     word_dictation_view_ = WordDictationView::kHidden;

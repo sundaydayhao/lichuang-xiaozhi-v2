@@ -111,187 +111,185 @@ lv_obj_t* GetButtonLabel(lv_obj_t* button) {
 
 } // namespace
 
-void UiLcdDisplay::AllocateWordDictationPageResources() {
-    if (word_dictation_textbooks_.empty()) {
-        auto make_words = [](std::initializer_list<std::pair<const char*, const char*>> entries) {
-            std::vector<WordDictationWord> words;
-            words.reserve(entries.size());
-            for (const auto& entry : entries) {
-                WordDictationWord word;
-                word.text = entry.first;
-                word.note = entry.second;
-                word.selected = true;
-                words.push_back(std::move(word));
-            }
-            return words;
-        };
-
-        WordDictationTextbook chinese_book;
-        chinese_book.category = "语文生字词";
-        chinese_book.grade = "五年级";
-        chinese_book.version = "人教编版";
-        chinese_book.subtitle = "五年级下";
-        chinese_book.cover_title = "语文";
-        chinese_book.cover_color = 0xFFB457;
-        chinese_book.stages = {
-            WordDictationStage{
-                .name = "第一单元",
-                .words = make_words({
-                    {"蝴蝶", "常见昆虫"},
-                    {"耕耘", "辛勤劳作"},
-                    {"锄头", "农具"},
-                    {"桑叶", "养蚕相关"},
-                    {"蜻蜓", "夏日昆虫"},
-                    {"樱桃", "水果名称"},
-                    {"倭瓜", "蔬菜名称"},
-                    {"闪烁", "光亮忽明忽暗"},
-                }),
-            },
-            WordDictationStage{
-                .name = "第二单元",
-                .words = make_words({
-                    {"胸膛", "身体部位"},
-                    {"妒忌", "心理活动"},
-                    {"神机妙算", "形容计策高明"},
-                    {"委托", "托付他人"},
-                    {"呐喊", "大声呼喊"},
-                    {"擂鼓", "敲击战鼓"},
-                    {"探听", "打听消息"},
-                    {"军令状", "立下承诺"},
-                }),
-            },
-            WordDictationStage{
-                .name = "期中",
-                .words = make_words({
-                    {"慈祥", "和善安详"},
-                    {"眷恋", "深切留恋"},
-                    {"辽阔", "广阔无边"},
-                    {"秉性", "性情品格"},
-                    {"衰老", "逐渐老去"},
-                    {"郑重", "严肃认真"},
-                    {"手绢", "手帕"},
-                    {"华侨", "侨居海外的人"},
-                }),
-            },
-        };
-
-        WordDictationTextbook english_book;
-        english_book.category = "英语单词";
-        english_book.grade = "九年级";
-        english_book.version = "牛津上海版";
-        english_book.subtitle = "九年级下";
-        english_book.cover_title = "English";
-        english_book.cover_color = 0xFF6F7B;
-        english_book.stages = {
-            WordDictationStage{
-                .name = "Module 1",
-                .words = make_words({
-                    {"atmosphere", "围绕地球的大气"},
-                    {"global", "全球的；全世界的"},
-                    {"global warming", "全球变暖"},
-                    {"greenhouse", "温室"},
-                    {"greenhouse effect", "温室效应"},
-                    {"habit", "习惯"},
-                    {"energy", "能源；精力"},
-                    {"electricity", "电"},
-                    {"plastic", "塑料"},
-                    {"recycle", "回收利用"},
-                    {"reduce", "减少"},
-                    {"environment", "环境"},
-                }),
-            },
-            WordDictationStage{
-                .name = "阶段1",
-                .words = make_words({
-                    {"pollution", "污染"},
-                    {"factory", "工厂"},
-                    {"protect", "保护"},
-                    {"natural", "自然的"},
-                    {"waste", "浪费；废物"},
-                    {"resource", "资源"},
-                    {"serious", "严重的"},
-                    {"temperature", "温度"},
-                }),
-            },
-            WordDictationStage{
-                .name = "期中",
-                .words = make_words({
-                    {"chemical", "化学的"},
-                    {"product", "产品"},
-                    {"transport", "运输"},
-                    {"scientist", "科学家"},
-                    {"research", "研究"},
-                    {"solution", "解决办法"},
-                    {"citizen", "市民"},
-                    {"public", "公共的"},
-                }),
-            },
-            WordDictationStage{
-                .name = "Module 2",
-                .words = make_words({
-                    {"disappear", "消失"},
-                    {"creature", "生物"},
-                    {"wildlife", "野生生物"},
-                    {"protective", "保护性的"},
-                    {"balance", "平衡"},
-                    {"forest", "森林"},
-                    {"ocean", "海洋"},
-                    {"planet", "行星；地球"},
-                }),
-            },
-            WordDictationStage{
-                .name = "阶段2",
-                .words = make_words({
-                    {"effective", "有效的"},
-                    {"action", "行动"},
-                    {"community", "社区"},
-                    {"responsibility", "责任"},
-                    {"future", "未来"},
-                    {"challenge", "挑战"},
-                    {"encourage", "鼓励"},
-                    {"support", "支持"},
-                }),
-            },
-        };
-
-        word_dictation_textbooks_.push_back(std::move(chinese_book));
-        word_dictation_textbooks_.push_back(std::move(english_book));
+void UiLcdDisplay::InitializeWordDictationSupport() {
+    if (!word_dictation_textbooks_.empty()) {
+        return;
     }
 
-    if (word_dictation_countdown_timer_ == nullptr) {
-        esp_timer_create_args_t countdown_timer_args = {
-            .callback = [](void* arg) {
-                auto* display = static_cast<UiLcdDisplay*>(arg);
-                Application::GetInstance().Schedule([display]() {
-                    display->AdvanceWordDictationCountdown();
-                });
-            },
-            .arg = this,
-            .dispatch_method = ESP_TIMER_TASK,
-            .name = "wd_countdown",
-            .skip_unhandled_events = false,
-        };
-        ESP_ERROR_CHECK(esp_timer_create(&countdown_timer_args, &word_dictation_countdown_timer_));
-    }
+    auto make_words = [](std::initializer_list<std::pair<const char*, const char*>> entries) {
+        std::vector<WordDictationWord> words;
+        words.reserve(entries.size());
+        for (const auto& entry : entries) {
+            WordDictationWord word;
+            word.text = entry.first;
+            word.note = entry.second;
+            word.selected = true;
+            words.push_back(std::move(word));
+        }
+        return words;
+    };
 
-    if (word_dictation_progress_timer_ == nullptr) {
-        esp_timer_create_args_t progress_timer_args = {
-            .callback = [](void* arg) {
-                auto* display = static_cast<UiLcdDisplay*>(arg);
-                Application::GetInstance().Schedule([display]() {
-                    display->AdvanceWordDictationPlayback();
-                });
-            },
-            .arg = this,
-            .dispatch_method = ESP_TIMER_TASK,
-            .name = "wd_progress",
-            .skip_unhandled_events = false,
-        };
-        ESP_ERROR_CHECK(esp_timer_create(&progress_timer_args, &word_dictation_progress_timer_));
-    }
+    WordDictationTextbook chinese_book;
+    chinese_book.category = "语文生字词";
+    chinese_book.grade = "五年级";
+    chinese_book.version = "人教编版";
+    chinese_book.subtitle = "五年级下";
+    chinese_book.cover_title = "语文";
+    chinese_book.cover_color = 0xFFB457;
+    chinese_book.stages = {
+        WordDictationStage{
+            .name = "第一单元",
+            .words = make_words({
+                {"蝴蝶", "常见昆虫"},
+                {"耕耘", "辛勤劳作"},
+                {"锄头", "农具"},
+                {"桑叶", "养蚕相关"},
+                {"蜻蜓", "夏日昆虫"},
+                {"樱桃", "水果名称"},
+                {"倭瓜", "蔬菜名称"},
+                {"闪烁", "光亮忽明忽暗"},
+            }),
+        },
+        WordDictationStage{
+            .name = "第二单元",
+            .words = make_words({
+                {"胸膛", "身体部位"},
+                {"妒忌", "心理活动"},
+                {"神机妙算", "形容计策高明"},
+                {"委托", "托付他人"},
+                {"呐喊", "大声呼喊"},
+                {"擂鼓", "敲击战鼓"},
+                {"探听", "打听消息"},
+                {"军令状", "立下承诺"},
+            }),
+        },
+        WordDictationStage{
+            .name = "期中",
+            .words = make_words({
+                {"慈祥", "和善安详"},
+                {"眷恋", "深切留恋"},
+                {"辽阔", "广阔无边"},
+                {"秉性", "性情品格"},
+                {"衰老", "逐渐老去"},
+                {"郑重", "严肃认真"},
+                {"手绢", "手帕"},
+                {"华侨", "侨居海外的人"},
+            }),
+        },
+    };
+
+    WordDictationTextbook english_book;
+    english_book.category = "英语单词";
+    english_book.grade = "九年级";
+    english_book.version = "牛津上海版";
+    english_book.subtitle = "九年级下";
+    english_book.cover_title = "English";
+    english_book.cover_color = 0xFF6F7B;
+    english_book.stages = {
+        WordDictationStage{
+            .name = "Module 1",
+            .words = make_words({
+                {"atmosphere", "围绕地球的大气"},
+                {"global", "全球的；全世界的"},
+                {"global warming", "全球变暖"},
+                {"greenhouse", "温室"},
+                {"greenhouse effect", "温室效应"},
+                {"habit", "习惯"},
+                {"energy", "能源；精力"},
+                {"electricity", "电"},
+                {"plastic", "塑料"},
+                {"recycle", "回收利用"},
+                {"reduce", "减少"},
+                {"environment", "环境"},
+            }),
+        },
+        WordDictationStage{
+            .name = "阶段1",
+            .words = make_words({
+                {"pollution", "污染"},
+                {"factory", "工厂"},
+                {"protect", "保护"},
+                {"natural", "自然的"},
+                {"waste", "浪费；废物"},
+                {"resource", "资源"},
+                {"serious", "严重的"},
+                {"temperature", "温度"},
+            }),
+        },
+        WordDictationStage{
+            .name = "期中",
+            .words = make_words({
+                {"chemical", "化学的"},
+                {"product", "产品"},
+                {"transport", "运输"},
+                {"scientist", "科学家"},
+                {"research", "研究"},
+                {"solution", "解决办法"},
+                {"citizen", "市民"},
+                {"public", "公共的"},
+            }),
+        },
+        WordDictationStage{
+            .name = "Module 2",
+            .words = make_words({
+                {"disappear", "消失"},
+                {"creature", "生物"},
+                {"wildlife", "野生生物"},
+                {"protective", "保护性的"},
+                {"balance", "平衡"},
+                {"forest", "森林"},
+                {"ocean", "海洋"},
+                {"planet", "行星；地球"},
+            }),
+        },
+        WordDictationStage{
+            .name = "阶段2",
+            .words = make_words({
+                {"effective", "有效的"},
+                {"action", "行动"},
+                {"community", "社区"},
+                {"responsibility", "责任"},
+                {"future", "未来"},
+                {"challenge", "挑战"},
+                {"encourage", "鼓励"},
+                {"support", "支持"},
+            }),
+        },
+    };
+
+    word_dictation_textbooks_.push_back(std::move(chinese_book));
+    word_dictation_textbooks_.push_back(std::move(english_book));
+
+    esp_timer_create_args_t countdown_timer_args = {
+        .callback = [](void* arg) {
+            auto* display = static_cast<UiLcdDisplay*>(arg);
+            Application::GetInstance().Schedule([display]() {
+                display->AdvanceWordDictationCountdown();
+            });
+        },
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "wd_countdown",
+        .skip_unhandled_events = false,
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&countdown_timer_args, &word_dictation_countdown_timer_));
+
+    esp_timer_create_args_t progress_timer_args = {
+        .callback = [](void* arg) {
+            auto* display = static_cast<UiLcdDisplay*>(arg);
+            Application::GetInstance().Schedule([display]() {
+                display->AdvanceWordDictationPlayback();
+            });
+        },
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "wd_progress",
+        .skip_unhandled_events = false,
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&progress_timer_args, &word_dictation_progress_timer_));
 }
 
-void UiLcdDisplay::FreeWordDictationPageResources() {
+void UiLcdDisplay::DeinitializeWordDictationSupport() {
     StopWordDictationPlayback();
 
     if (word_dictation_countdown_timer_ != nullptr) {
@@ -303,6 +301,10 @@ void UiLcdDisplay::FreeWordDictationPageResources() {
         word_dictation_progress_timer_ = nullptr;
     }
 
+    DestroyWordDictationScreen();
+}
+
+void UiLcdDisplay::DestroyWordDictationScreen() {
     DisplayLockGuard lock(this);
     if (word_dictation_screen_ != nullptr) {
         lv_obj_del(word_dictation_screen_);
@@ -314,19 +316,6 @@ void UiLcdDisplay::FreeWordDictationPageResources() {
     word_dictation_back_button_ = nullptr;
     word_dictation_running_count_label_ = nullptr;
     word_dictation_running_hint_label_ = nullptr;
-    word_dictation_textbooks_.clear();
-    word_dictation_textbooks_.shrink_to_fit();
-    word_dictation_list_item_data_.clear();
-    word_dictation_list_item_data_.shrink_to_fit();
-    word_dictation_action_data_.clear();
-    word_dictation_action_data_.shrink_to_fit();
-    word_dictation_play_order_.clear();
-    word_dictation_play_order_.shrink_to_fit();
-    word_dictation_selected_textbook_index_ = -1;
-    word_dictation_selected_stage_index_ = -1;
-    word_dictation_countdown_value_ = 3;
-    word_dictation_current_play_index_ = 0;
-    word_dictation_view_ = WordDictationView::kHidden;
 }
 
 void UiLcdDisplay::UpdateWordDictationBackButton(bool close_mode) {
@@ -427,7 +416,7 @@ void UiLcdDisplay::RebuildWordDictationPlayOrder() {
 }
 
 void UiLcdDisplay::ShowWordDictationTextbookScreen() {
-    AllocateWordDictationPageResources();
+    InitializeWordDictationSupport();
 
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     auto* text_font = lvgl_theme->text_font()->font();
