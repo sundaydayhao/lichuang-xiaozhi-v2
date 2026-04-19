@@ -41,7 +41,7 @@ constexpr int kMenuButtonHitPadding = 8;
 constexpr int kVisionOptionId = 4;
 constexpr int kEncyclopediaOptionId = 2;
 constexpr int kOralPracticeOptionId = 3;
-constexpr int kBedtimeStoryOptionId = 5;
+constexpr int kAiMassageOptionId = 5;
 constexpr int kRemoteSelfieOptionId = 6;
 constexpr int kAiPrintOptionId = 7;
 constexpr int kWordDictationOptionId = 8;
@@ -249,7 +249,7 @@ const char* UiLcdDisplay::GetMenuText(int option_id) const {
     case 4:
         return "拍识万物";
     case 5:
-        return "睡前故事";
+        return "AI按摩";
     case 6:
         return "遥控自拍";
     case 7:
@@ -280,7 +280,7 @@ const char* UiLcdDisplay::GetMenuIconAssetName(int option_id) const {
     case 4:
         return "menu_vision.png";
     case 5:
-        return "menu_bedtime_story.png";
+        return "menu_ai_massage.png";
     case 6:
         return "menu_remote_selfie.png";
     case 7:
@@ -307,7 +307,7 @@ const char* UiLcdDisplay::GetFeatureBackgroundAssetName(int option_id) const {
     case 3:
         return "bg_oral_practice.png";
     case 5:
-        return "bg_bedtime_story.png";
+        return "bg_ai_massage.png";
     case 8:
         return "bg_word_dictation.png";
     case 9:
@@ -321,7 +321,7 @@ bool UiLcdDisplay::IsDialogueSceneOption(int option_id) const {
     switch (option_id) {
     case kEncyclopediaOptionId:
     case kOralPracticeOptionId:
-    case kBedtimeStoryOptionId:
+    case kAiMassageOptionId:
     case kAiPrintOptionId:
     case kFaceReadingOptionId:
     case kMagicMirrorOptionId:
@@ -358,15 +358,16 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
             "Correct mistakes briefly and gently. "
             "If the user does not speak English, ask them to continue in English.";
         break;
-    case kBedtimeStoryOptionId:
-        scene = "bedtime_story";
-        mode = "bedtime_storyteller";
+    case kAiMassageOptionId:
+        scene = "ai_massage";
+        mode = "massage_assistant";
         instructions =
-            "You are a bedtime storyteller for children. "
+            "You are a gentle AI massage and relaxation assistant. "
             "Always reply in the current reply_language. "
-            "Tell warm, calming, age-appropriate bedtime stories and keep the tone gentle. "
-            "You may ask one short follow-up question about theme, character, or length. "
-            "Keep stories suitable for listening aloud.";
+            "Offer simple, safe, non-medical massage and relaxation guidance. "
+            "Keep the tone calm and supportive, with short step-by-step suggestions. "
+            "Focus on light pressure, stretching, and comfort reminders. "
+            "Do not claim diagnosis or treatment, and tell the user to stop if anything hurts.";
         break;
     case kAiPrintOptionId:
         scene = "ai_print";

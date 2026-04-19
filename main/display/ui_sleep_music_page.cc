@@ -119,6 +119,20 @@ void UiLcdDisplay::InitializeSleepMusicScreen() {
                                                 LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC |
                                                 LV_OBJ_FLAG_SCROLL_MOMENTUM | LV_OBJ_FLAG_SCROLL_CHAIN));
 
+    if (const lv_image_dsc_t* background = LoadAssetImage("bg_sleep_music.png");
+        background != nullptr) {
+        lv_obj_t* background_image = lv_image_create(sleep_music_screen_);
+        lv_obj_set_size(background_image, LV_HOR_RES, LV_VER_RES);
+        lv_obj_add_flag(background_image, LV_OBJ_FLAG_FLOATING);
+        lv_obj_add_flag(background_image, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_set_style_bg_opa(background_image, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(background_image, 0, 0);
+        lv_obj_set_pos(background_image, 0, 0);
+        lv_image_set_inner_align(background_image, LV_IMAGE_ALIGN_STRETCH);
+        lv_image_set_src(background_image, background);
+        lv_obj_move_to_index(background_image, 0);
+    }
+
     sleep_music_title_label_ = lv_label_create(sleep_music_screen_);
     lv_obj_align(sleep_music_title_label_, LV_ALIGN_TOP_MID, 0, 40);
     lv_obj_set_style_text_font(sleep_music_title_label_, lvgl_theme->text_font()->font(), 0);
@@ -128,7 +142,7 @@ void UiLcdDisplay::InitializeSleepMusicScreen() {
     lv_obj_set_size(content, LV_HOR_RES, LV_VER_RES - 84);
     lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 84);
     lv_obj_set_style_bg_color(content, lv_color_white(), 0);
-    lv_obj_set_style_bg_opa(content, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(content, LV_OPA_80, 0);
     lv_obj_set_style_border_width(content, 0, 0);
     lv_obj_set_style_pad_all(content, 16, 0);
     lv_obj_set_style_pad_row(content, 12, 0);
