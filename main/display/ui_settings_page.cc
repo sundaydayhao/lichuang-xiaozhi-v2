@@ -5,10 +5,14 @@
 #include "dual_network_board.h"
 #include "lvgl_theme.h"
 #include "settings.h"
+#include "system_info.h"
 #include "assets/lang_config.h"
 
+#include <at_modem.h>
+#include <esp_app_desc.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <wifi_station.h>
 
 namespace {
 
@@ -95,6 +99,72 @@ int UiLcdDisplay::GetCurrentLanguageSwitchOptionIndex() const {
         return 2;
     }
     return 0;
+}
+
+const char* UiLcdDisplay::GetAboutTitle() const {
+    return "关于本机";
+}
+
+const char* UiLcdDisplay::GetAboutInfoTitle(int index) const {
+    static const char* kTexts[kAboutInfoItemCount] = {
+        "固件版本",
+        "绑定验证码",
+        "服务器地址",
+        "WiFi MAC",
+        "4G IMEI",
+        "IP地址",
+        "UUID",
+    };
+    return (index >= 0 && index < static_cast<int>(kAboutInfoItemCount)) ? kTexts[index] : "";
+}
+
+std::string UiLcdDisplay::GetFirmwareVersionForDisplay() const {
+    const esp_app_desc_t* app_desc = esp_app_get_description();
+    if (app_desc == nullptr || app_desc->version[0] == '\0') {
+        return "unknown";
+    }
+    return app_desc->version;
+}
+
+std::string UiLcdDisplay::GetActivationCodeForDisplay() const {
+    return "暂无";
+}
+
+std::string UiLcdDisplay::GetServerAddressForDisplay() const {
+    Settings wifi_settings("wifi", false);
+    std::string url = wifi_settings.GetString("ota_url");
+    if (!url.empty()) {
+        return url;
+    }
+
+    Settings websocket_settings("websocket", false);
+    url = websocket_settings.GetString("url");
+    return url.empty() ? "未配置" : url;
+}
+
+std::string UiLcdDisplay::GetWifiMacAddressForDisplay() const {
+    std::string mac = SystemInfo::GetMacAddress();
+    return mac.empty() ? "unknown" : mac;
+}
+
+std::string UiLcdDisplay::Get4gImeiForDisplay() const {
+    auto* modem = dynamic_cast<AtModem*>(Board::GetInstance().GetNetwork());
+    if (modem == nullptr) {
+        return "未配置";
+    }
+
+    std::string imei = modem->GetImei();
+    return imei.empty() ? "未配置" : imei;
+}
+
+std::string UiLcdDisplay::GetIpAddressForDisplay() const {
+    const std::string& ip = WifiStation::GetInstance().GetIpAddress();
+    return ip.empty() ? "未配置" : ip;
+}
+
+std::string UiLcdDisplay::GetUuidForDisplay() const {
+    std::string uuid = Board::GetInstance().GetUuid();
+    return uuid.empty() ? "unknown" : uuid;
 }
 
 void UiLcdDisplay::InitializeSettingsScreen() {
@@ -328,6 +398,139 @@ void UiLcdDisplay::InitializeServerSwitchScreen() {
 
     server_switch_back_button_data_ = BackButtonData{this, kBackTargetSettings};
     CreateBackButton(server_switch_screen_, &server_switch_back_button_data_);
+}
+
+void UiLcdDisplay::InitializeAboutScreen() {
+    DisplayLockGuard lock(this);
+
+    if (about_screen_ != nullptr) {
+        return;
+    }
+
+    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
+
+    about_screen_ = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(about_screen_, lv_color_white(), 0);
+    lv_obj_set_style_border_width(about_screen_, 0, 0);
+    lv_obj_set_style_pad_all(about_screen_, 0, 0);
+    lv_obj_set_scrollbar_mode(about_screen_, LV_SCROLLBAR_MODE_OFF);
+
+    about_title_label_ = lv_label_create(about_screen_);
+    lv_label_set_text(about_title_label_, GetAboutTitle());
+    lv_obj_align(about_title_label_, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_text_font(about_title_label_, lvgl_theme->text_font()->font(), 0);
+    lv_obj_set_style_text_color(about_title_label_, lv_color_black(), 0);
+
+    about_content_ = lv_obj_create(about_screen_);
+    lv_obj_set_size(about_content_, LV_HOR_RES, LV_VER_RES - 84);
+    lv_obj_align(about_content_, LV_ALIGN_TOP_MID, 0, 84);
+    lv_obj_set_style_bg_color(about_content_, lv_color_white(), 0);
+    lv_obj_set_style_border_width(about_content_, 0, 0);
+    lv_obj_set_style_pad_left(about_content_, 16, 0);
+    lv_obj_set_style_pad_right(about_content_, 16, 0);
+    lv_obj_set_style_pad_top(about_content_, 0, 0);
+    lv_obj_set_style_pad_bottom(about_content_, 16, 0);
+    lv_obj_set_scroll_dir(about_content_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(about_content_, LV_SCROLLBAR_MODE_OFF);
+
+    for (int i = 0; i < static_cast<int>(kAboutInfoItemCount); ++i) {
+        about_info_title_labels_[i] = lv_label_create(about_content_);
+        lv_label_set_text(about_info_title_labels_[i], GetAboutInfoTitle(i));
+        lv_obj_set_width(about_info_title_labels_[i], LV_HOR_RES - 32);
+        lv_obj_set_style_text_color(about_info_title_labels_[i], lv_color_hex(0x666666), 0);
+        lv_obj_set_style_text_font(about_info_title_labels_[i], lvgl_theme->text_font()->font(), 0);
+
+        about_info_value_labels_[i] = lv_label_create(about_content_);
+        lv_obj_set_width(about_info_value_labels_[i], LV_HOR_RES - 32);
+        lv_label_set_long_mode(about_info_value_labels_[i], LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_color(about_info_value_labels_[i], lv_color_black(), 0);
+        lv_obj_set_style_text_font(about_info_value_labels_[i], lvgl_theme->text_font()->font(), 0);
+
+        if (i < static_cast<int>(kAboutInfoItemCount) - 1) {
+            about_info_separator_labels_[i] = lv_obj_create(about_content_);
+            lv_obj_set_size(about_info_separator_labels_[i], LV_HOR_RES - 32, 1);
+            lv_obj_set_style_bg_color(about_info_separator_labels_[i], lv_color_hex(0xD9D9D9), 0);
+            lv_obj_set_style_bg_opa(about_info_separator_labels_[i], LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(about_info_separator_labels_[i], 0, 0);
+            lv_obj_set_style_radius(about_info_separator_labels_[i], 0, 0);
+            lv_obj_clear_flag(about_info_separator_labels_[i], LV_OBJ_FLAG_CLICKABLE);
+        }
+    }
+
+    about_back_button_data_ = BackButtonData{this, 1};
+    CreateBackButton(about_screen_, &about_back_button_data_);
+}
+
+void UiLcdDisplay::DestroyAboutScreen() {
+    DisplayLockGuard lock(this);
+    if (about_screen_ != nullptr) {
+        lv_obj_del(about_screen_);
+        about_screen_ = nullptr;
+    }
+
+    about_title_label_ = nullptr;
+    about_content_ = nullptr;
+    about_info_title_labels_.fill(nullptr);
+    about_info_value_labels_.fill(nullptr);
+    about_info_separator_labels_.fill(nullptr);
+}
+
+void UiLcdDisplay::ShowAboutScreen() {
+    if (about_screen_ == nullptr) {
+        InitializeAboutScreen();
+    }
+
+    RefreshAboutScreenTexts();
+    {
+        DisplayLockGuard lock(this);
+        if (about_content_ != nullptr) {
+            lv_obj_scroll_to_y(about_content_, 0, LV_ANIM_OFF);
+        }
+    }
+    LoadScreen(about_screen_);
+}
+
+void UiLcdDisplay::RefreshAboutScreenTexts() {
+    if (about_title_label_ == nullptr || about_content_ == nullptr) {
+        return;
+    }
+
+    DisplayLockGuard lock(this);
+    lv_label_set_text(about_title_label_, GetAboutTitle());
+
+    const std::array<std::string, kAboutInfoItemCount> values = {
+        GetFirmwareVersionForDisplay(),
+        GetActivationCodeForDisplay(),
+        GetServerAddressForDisplay(),
+        GetWifiMacAddressForDisplay(),
+        Get4gImeiForDisplay(),
+        GetIpAddressForDisplay(),
+        GetUuidForDisplay(),
+    };
+
+    int y = 0;
+    for (int i = 0; i < static_cast<int>(kAboutInfoItemCount); ++i) {
+        if (about_info_title_labels_[i] == nullptr || about_info_value_labels_[i] == nullptr) {
+            continue;
+        }
+
+        lv_label_set_text(about_info_title_labels_[i], GetAboutInfoTitle(i));
+        lv_label_set_text(about_info_value_labels_[i], values[i].c_str());
+        lv_obj_update_layout(about_content_);
+
+        lv_obj_set_pos(about_info_title_labels_[i], 0, y);
+        y += lv_obj_get_height(about_info_title_labels_[i]) + 4;
+
+        lv_obj_set_pos(about_info_value_labels_[i], 0, y);
+        y += lv_obj_get_height(about_info_value_labels_[i]) + 10;
+
+        if (i < static_cast<int>(kAboutInfoItemCount) - 1 && about_info_separator_labels_[i] != nullptr) {
+            lv_obj_set_pos(about_info_separator_labels_[i], 0, y);
+            y += 13;
+        }
+    }
+
+    lv_obj_update_layout(about_content_);
 }
 
 void UiLcdDisplay::InitializeLanguageSwitchScreen() {

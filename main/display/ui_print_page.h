@@ -1,5 +1,5 @@
-#ifndef UI_PRINT_PANEL_H
-#define UI_PRINT_PANEL_H
+#ifndef UI_PRINT_PAGE_H
+#define UI_PRINT_PAGE_H
 
 #include <lvgl.h>
 
@@ -19,4 +19,4 @@ private:
     static void RunTask(UiLcdDisplay& display, const std::string& prompt);
 };
 
-#endif // UI_PRINT_PANEL_H
+#endif // UI_PRINT_PAGE_H
