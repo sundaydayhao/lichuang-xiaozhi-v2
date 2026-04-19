@@ -94,6 +94,7 @@ void UiLcdDisplay::InitializeSleepMusicSupport() {
 
 void UiLcdDisplay::DeinitializeSleepMusicSupport() {
     StopSleepMusicPlayback(false);
+    DestroySleepMusicScreen();
     if (sleep_music_timer_ != nullptr) {
         esp_timer_delete(sleep_music_timer_);
         sleep_music_timer_ = nullptr;
@@ -275,9 +276,25 @@ void UiLcdDisplay::ShowSleepMusicScreen() {
     }
 
     RefreshSleepMusicScreen();
+    LoadScreen(sleep_music_screen_);
+}
+
+void UiLcdDisplay::DestroySleepMusicScreen() {
     DisplayLockGuard lock(this);
-    lv_screen_load(sleep_music_screen_);
-    MoveStatusBarToScreen(sleep_music_screen_);
+    if (sleep_music_screen_ != nullptr) {
+        lv_obj_del(sleep_music_screen_);
+        sleep_music_screen_ = nullptr;
+    }
+
+    sleep_music_title_label_ = nullptr;
+    sleep_music_status_label_ = nullptr;
+    sleep_music_mode_buttons_.fill(nullptr);
+    sleep_music_mode_labels_.fill(nullptr);
+    sleep_music_duration_buttons_.fill(nullptr);
+    sleep_music_duration_labels_.fill(nullptr);
+    sleep_music_countdown_label_ = nullptr;
+    sleep_music_action_button_ = nullptr;
+    sleep_music_action_label_ = nullptr;
 }
 
 void UiLcdDisplay::RefreshSleepMusicScreen() {

@@ -301,16 +301,21 @@ void UiLcdDisplay::DeinitializeWordDictationSupport() {
         word_dictation_progress_timer_ = nullptr;
     }
 
+    DestroyWordDictationScreen();
+}
+
+void UiLcdDisplay::DestroyWordDictationScreen() {
+    DisplayLockGuard lock(this);
     if (word_dictation_screen_ != nullptr) {
-        DisplayLockGuard lock(this);
         lv_obj_del(word_dictation_screen_);
         word_dictation_screen_ = nullptr;
-        word_dictation_title_label_ = nullptr;
-        word_dictation_content_ = nullptr;
-        word_dictation_back_button_ = nullptr;
-        word_dictation_running_count_label_ = nullptr;
-        word_dictation_running_hint_label_ = nullptr;
     }
+
+    word_dictation_title_label_ = nullptr;
+    word_dictation_content_ = nullptr;
+    word_dictation_back_button_ = nullptr;
+    word_dictation_running_count_label_ = nullptr;
+    word_dictation_running_hint_label_ = nullptr;
 }
 
 void UiLcdDisplay::UpdateWordDictationBackButton(bool close_mode) {
@@ -416,103 +421,104 @@ void UiLcdDisplay::ShowWordDictationTextbookScreen() {
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     auto* text_font = lvgl_theme->text_font()->font();
 
-    DisplayLockGuard lock(this);
-    if (word_dictation_screen_ == nullptr) {
-        word_dictation_screen_ = lv_obj_create(nullptr);
-        lv_obj_set_style_bg_color(word_dictation_screen_, lv_color_white(), 0);
-        lv_obj_set_style_border_width(word_dictation_screen_, 0, 0);
-        lv_obj_set_style_pad_all(word_dictation_screen_, 0, 0);
-        lv_obj_set_scrollbar_mode(word_dictation_screen_, LV_SCROLLBAR_MODE_OFF);
+    {
+        DisplayLockGuard lock(this);
+        if (word_dictation_screen_ == nullptr) {
+            word_dictation_screen_ = lv_obj_create(nullptr);
+            lv_obj_set_style_bg_color(word_dictation_screen_, lv_color_white(), 0);
+            lv_obj_set_style_border_width(word_dictation_screen_, 0, 0);
+            lv_obj_set_style_pad_all(word_dictation_screen_, 0, 0);
+            lv_obj_set_scrollbar_mode(word_dictation_screen_, LV_SCROLLBAR_MODE_OFF);
 
-        word_dictation_title_label_ = lv_label_create(word_dictation_screen_);
-        lv_obj_align(word_dictation_title_label_, LV_ALIGN_TOP_MID, 0, 40);
-        lv_obj_set_style_text_font(word_dictation_title_label_, text_font, 0);
-        lv_obj_set_style_text_color(word_dictation_title_label_, lv_color_hex(kWordDictationTitleText), 0);
+            word_dictation_title_label_ = lv_label_create(word_dictation_screen_);
+            lv_obj_align(word_dictation_title_label_, LV_ALIGN_TOP_MID, 0, 40);
+            lv_obj_set_style_text_font(word_dictation_title_label_, text_font, 0);
+            lv_obj_set_style_text_color(word_dictation_title_label_, lv_color_hex(kWordDictationTitleText), 0);
 
-        word_dictation_content_ = lv_obj_create(word_dictation_screen_);
-        lv_obj_set_size(word_dictation_content_, LV_HOR_RES, LV_VER_RES - 84);
-        lv_obj_align(word_dictation_content_, LV_ALIGN_TOP_MID, 0, 84);
-        lv_obj_set_style_bg_color(word_dictation_content_, lv_color_white(), 0);
-        lv_obj_set_style_border_width(word_dictation_content_, 0, 0);
-        lv_obj_set_style_pad_left(word_dictation_content_, 16, 0);
-        lv_obj_set_style_pad_right(word_dictation_content_, 16, 0);
-        lv_obj_set_style_pad_top(word_dictation_content_, 0, 0);
-        lv_obj_set_style_pad_bottom(word_dictation_content_, 20, 0);
-        lv_obj_set_scroll_dir(word_dictation_content_, LV_DIR_VER);
-        lv_obj_set_scrollbar_mode(word_dictation_content_, LV_SCROLLBAR_MODE_OFF);
+            word_dictation_content_ = lv_obj_create(word_dictation_screen_);
+            lv_obj_set_size(word_dictation_content_, LV_HOR_RES, LV_VER_RES - 84);
+            lv_obj_align(word_dictation_content_, LV_ALIGN_TOP_MID, 0, 84);
+            lv_obj_set_style_bg_color(word_dictation_content_, lv_color_white(), 0);
+            lv_obj_set_style_border_width(word_dictation_content_, 0, 0);
+            lv_obj_set_style_pad_left(word_dictation_content_, 16, 0);
+            lv_obj_set_style_pad_right(word_dictation_content_, 16, 0);
+            lv_obj_set_style_pad_top(word_dictation_content_, 0, 0);
+            lv_obj_set_style_pad_bottom(word_dictation_content_, 20, 0);
+            lv_obj_set_scroll_dir(word_dictation_content_, LV_DIR_VER);
+            lv_obj_set_scrollbar_mode(word_dictation_content_, LV_SCROLLBAR_MODE_OFF);
 
-        word_dictation_back_button_data_ = BackButtonData{this, 4};
-        word_dictation_back_button_ = CreateBackButton(word_dictation_screen_, &word_dictation_back_button_data_);
+            word_dictation_back_button_data_ = BackButtonData{this, 4};
+            word_dictation_back_button_ = CreateBackButton(word_dictation_screen_, &word_dictation_back_button_data_);
+        }
+
+        StopWordDictationPlayback();
+        current_feature_option_id_ = 8;
+        word_dictation_view_ = WordDictationView::kTextbooks;
+        word_dictation_running_count_label_ = nullptr;
+        word_dictation_running_hint_label_ = nullptr;
+        word_dictation_list_item_data_.clear();
+        word_dictation_action_data_.clear();
+        lv_obj_clean(word_dictation_content_);
+        lv_label_set_text(word_dictation_title_label_, "听写");
+        lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
+        UpdateWordDictationBackButton(false);
+
+        int y = 0;
+        word_dictation_list_item_data_.resize(word_dictation_textbooks_.size());
+        for (size_t i = 0; i < word_dictation_textbooks_.size(); ++i) {
+            const auto& textbook = word_dictation_textbooks_[i];
+
+            lv_obj_t* section_label = lv_label_create(word_dictation_content_);
+            lv_label_set_text_fmt(section_label, "%s", textbook.category.c_str());
+            lv_obj_set_pos(section_label, 0, y);
+            lv_obj_set_style_text_font(section_label, text_font, 0);
+            lv_obj_set_style_text_color(section_label, lv_color_hex(kWordDictationTitleText), 0);
+
+            lv_obj_t* grade_label = lv_label_create(word_dictation_content_);
+            lv_label_set_text_fmt(grade_label, "%s", textbook.grade.c_str());
+            lv_obj_set_style_text_font(grade_label, text_font, 0);
+            lv_obj_set_style_text_color(grade_label, lv_color_hex(kWordDictationMutedText), 0);
+            lv_obj_align_to(grade_label, section_label, LV_ALIGN_OUT_RIGHT_MID, 104, 0);
+            y += 14;
+
+            lv_obj_t* item = CreatePageButton(word_dictation_content_, LV_HOR_RES - 32, 92);
+            lv_obj_set_pos(item, 0, y + 10);
+            word_dictation_list_item_data_[i] = WordDictationListItemData{this, static_cast<int>(i)};
+            lv_obj_set_user_data(item, &word_dictation_list_item_data_[i]);
+            lv_obj_add_event_cb(item, OnWordDictationListItemClicked, LV_EVENT_CLICKED, nullptr);
+
+            lv_obj_t* cover = lv_obj_create(item);
+            lv_obj_set_size(cover, 64, 64);
+            lv_obj_align(cover, LV_ALIGN_LEFT_MID, 14, 0);
+            lv_obj_set_style_radius(cover, 16, 0);
+            lv_obj_set_style_bg_color(cover, lv_color_hex(textbook.cover_color), 0);
+            lv_obj_set_style_bg_opa(cover, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(cover, 0, 0);
+            lv_obj_clear_flag(cover, LV_OBJ_FLAG_CLICKABLE);
+
+            lv_obj_t* cover_label = lv_label_create(cover);
+            lv_label_set_text(cover_label, textbook.cover_title.c_str());
+            lv_obj_center(cover_label);
+            lv_obj_set_style_text_font(cover_label, text_font, 0);
+            lv_obj_set_style_text_color(cover_label, lv_color_white(), 0);
+
+            lv_obj_t* version_label = lv_label_create(item);
+            lv_label_set_text(version_label, textbook.version.c_str());
+            lv_obj_set_pos(version_label, 92, 24);
+            lv_obj_set_style_text_font(version_label, text_font, 0);
+            lv_obj_set_style_text_color(version_label, lv_color_hex(kWordDictationTitleText), 0);
+
+            lv_obj_t* subtitle_label = lv_label_create(item);
+            lv_label_set_text(subtitle_label, textbook.subtitle.c_str());
+            lv_obj_set_pos(subtitle_label, 92, 50);
+            lv_obj_set_style_text_font(subtitle_label, text_font, 0);
+            lv_obj_set_style_text_color(subtitle_label, lv_color_hex(kWordDictationMutedText), 0);
+
+            y += 118;
+        }
     }
 
-    StopWordDictationPlayback();
-    current_feature_option_id_ = 8;
-    word_dictation_view_ = WordDictationView::kTextbooks;
-    word_dictation_running_count_label_ = nullptr;
-    word_dictation_running_hint_label_ = nullptr;
-    word_dictation_list_item_data_.clear();
-    word_dictation_action_data_.clear();
-    lv_obj_clean(word_dictation_content_);
-    lv_label_set_text(word_dictation_title_label_, "听写");
-    lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
-    UpdateWordDictationBackButton(false);
-
-    int y = 0;
-    word_dictation_list_item_data_.resize(word_dictation_textbooks_.size());
-    for (size_t i = 0; i < word_dictation_textbooks_.size(); ++i) {
-        const auto& textbook = word_dictation_textbooks_[i];
-
-        lv_obj_t* section_label = lv_label_create(word_dictation_content_);
-        lv_label_set_text_fmt(section_label, "%s", textbook.category.c_str());
-        lv_obj_set_pos(section_label, 0, y);
-        lv_obj_set_style_text_font(section_label, text_font, 0);
-        lv_obj_set_style_text_color(section_label, lv_color_hex(kWordDictationTitleText), 0);
-
-        lv_obj_t* grade_label = lv_label_create(word_dictation_content_);
-        lv_label_set_text_fmt(grade_label, "%s", textbook.grade.c_str());
-        lv_obj_set_style_text_font(grade_label, text_font, 0);
-        lv_obj_set_style_text_color(grade_label, lv_color_hex(kWordDictationMutedText), 0);
-        lv_obj_align_to(grade_label, section_label, LV_ALIGN_OUT_RIGHT_MID, 104, 0);
-        y += 14;
-
-        lv_obj_t* item = CreatePageButton(word_dictation_content_, LV_HOR_RES - 32, 92);
-        lv_obj_set_pos(item, 0, y + 10);
-        word_dictation_list_item_data_[i] = WordDictationListItemData{this, static_cast<int>(i)};
-        lv_obj_set_user_data(item, &word_dictation_list_item_data_[i]);
-        lv_obj_add_event_cb(item, OnWordDictationListItemClicked, LV_EVENT_CLICKED, nullptr);
-
-        lv_obj_t* cover = lv_obj_create(item);
-        lv_obj_set_size(cover, 64, 64);
-        lv_obj_align(cover, LV_ALIGN_LEFT_MID, 14, 0);
-        lv_obj_set_style_radius(cover, 16, 0);
-        lv_obj_set_style_bg_color(cover, lv_color_hex(textbook.cover_color), 0);
-        lv_obj_set_style_bg_opa(cover, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(cover, 0, 0);
-        lv_obj_clear_flag(cover, LV_OBJ_FLAG_CLICKABLE);
-
-        lv_obj_t* cover_label = lv_label_create(cover);
-        lv_label_set_text(cover_label, textbook.cover_title.c_str());
-        lv_obj_center(cover_label);
-        lv_obj_set_style_text_font(cover_label, text_font, 0);
-        lv_obj_set_style_text_color(cover_label, lv_color_white(), 0);
-
-        lv_obj_t* version_label = lv_label_create(item);
-        lv_label_set_text(version_label, textbook.version.c_str());
-        lv_obj_set_pos(version_label, 92, 24);
-        lv_obj_set_style_text_font(version_label, text_font, 0);
-        lv_obj_set_style_text_color(version_label, lv_color_hex(kWordDictationTitleText), 0);
-
-        lv_obj_t* subtitle_label = lv_label_create(item);
-        lv_label_set_text(subtitle_label, textbook.subtitle.c_str());
-        lv_obj_set_pos(subtitle_label, 92, 50);
-        lv_obj_set_style_text_font(subtitle_label, text_font, 0);
-        lv_obj_set_style_text_color(subtitle_label, lv_color_hex(kWordDictationMutedText), 0);
-
-        y += 118;
-    }
-
-    lv_screen_load(word_dictation_screen_);
-    MoveStatusBarToScreen(word_dictation_screen_);
+    LoadScreen(word_dictation_screen_);
 }
 
 void UiLcdDisplay::ShowWordDictationStageScreen() {
@@ -525,37 +531,38 @@ void UiLcdDisplay::ShowWordDictationStageScreen() {
     auto* text_font = lvgl_theme->text_font()->font();
     const auto& textbook = word_dictation_textbooks_[word_dictation_selected_textbook_index_];
 
-    DisplayLockGuard lock(this);
-    word_dictation_view_ = WordDictationView::kStages;
-    word_dictation_running_count_label_ = nullptr;
-    word_dictation_running_hint_label_ = nullptr;
-    word_dictation_list_item_data_.clear();
-    word_dictation_action_data_.clear();
-    lv_obj_clean(word_dictation_content_);
-    lv_label_set_text(word_dictation_title_label_, (textbook.subtitle + "（" + textbook.version + "）").c_str());
-    lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
-    UpdateWordDictationBackButton(false);
+    {
+        DisplayLockGuard lock(this);
+        word_dictation_view_ = WordDictationView::kStages;
+        word_dictation_running_count_label_ = nullptr;
+        word_dictation_running_hint_label_ = nullptr;
+        word_dictation_list_item_data_.clear();
+        word_dictation_action_data_.clear();
+        lv_obj_clean(word_dictation_content_);
+        lv_label_set_text(word_dictation_title_label_, (textbook.subtitle + "（" + textbook.version + "）").c_str());
+        lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
+        UpdateWordDictationBackButton(false);
 
-    word_dictation_list_item_data_.resize(textbook.stages.size());
-    int y = 6;
-    for (size_t i = 0; i < textbook.stages.size(); ++i) {
-        lv_obj_t* item = CreatePageButton(word_dictation_content_, LV_HOR_RES - 32, 56);
-        lv_obj_set_pos(item, 0, y);
-        word_dictation_list_item_data_[i] = WordDictationListItemData{this, static_cast<int>(i)};
-        lv_obj_set_user_data(item, &word_dictation_list_item_data_[i]);
-        lv_obj_add_event_cb(item, OnWordDictationListItemClicked, LV_EVENT_CLICKED, nullptr);
+        word_dictation_list_item_data_.resize(textbook.stages.size());
+        int y = 6;
+        for (size_t i = 0; i < textbook.stages.size(); ++i) {
+            lv_obj_t* item = CreatePageButton(word_dictation_content_, LV_HOR_RES - 32, 56);
+            lv_obj_set_pos(item, 0, y);
+            word_dictation_list_item_data_[i] = WordDictationListItemData{this, static_cast<int>(i)};
+            lv_obj_set_user_data(item, &word_dictation_list_item_data_[i]);
+            lv_obj_add_event_cb(item, OnWordDictationListItemClicked, LV_EVENT_CLICKED, nullptr);
 
-        lv_obj_t* label = lv_label_create(item);
-        lv_label_set_text(label, textbook.stages[i].name.c_str());
-        lv_obj_align(label, LV_ALIGN_LEFT_MID, 18, 0);
-        lv_obj_set_style_text_font(label, text_font, 0);
-        lv_obj_set_style_text_color(label, lv_color_hex(kWordDictationTitleText), 0);
+            lv_obj_t* label = lv_label_create(item);
+            lv_label_set_text(label, textbook.stages[i].name.c_str());
+            lv_obj_align(label, LV_ALIGN_LEFT_MID, 18, 0);
+            lv_obj_set_style_text_font(label, text_font, 0);
+            lv_obj_set_style_text_color(label, lv_color_hex(kWordDictationTitleText), 0);
 
-        y += 68;
+            y += 68;
+        }
     }
 
-    lv_screen_load(word_dictation_screen_);
-    MoveStatusBarToScreen(word_dictation_screen_);
+    LoadScreen(word_dictation_screen_);
 }
 
 void UiLcdDisplay::ShowWordDictationWordScreen() {
@@ -569,102 +576,103 @@ void UiLcdDisplay::ShowWordDictationWordScreen() {
     const auto& stage =
         word_dictation_textbooks_[word_dictation_selected_textbook_index_].stages[word_dictation_selected_stage_index_];
 
-    DisplayLockGuard lock(this);
-    word_dictation_view_ = WordDictationView::kWords;
-    word_dictation_running_count_label_ = nullptr;
-    word_dictation_running_hint_label_ = nullptr;
-    word_dictation_list_item_data_.clear();
-    word_dictation_action_data_.clear();
-    lv_obj_clean(word_dictation_content_);
-    lv_label_set_text(word_dictation_title_label_, stage.name.c_str());
-    lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
-    UpdateWordDictationBackButton(false);
+    {
+        DisplayLockGuard lock(this);
+        word_dictation_view_ = WordDictationView::kWords;
+        word_dictation_running_count_label_ = nullptr;
+        word_dictation_running_hint_label_ = nullptr;
+        word_dictation_list_item_data_.clear();
+        word_dictation_action_data_.clear();
+        lv_obj_clean(word_dictation_content_);
+        lv_label_set_text(word_dictation_title_label_, stage.name.c_str());
+        lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
+        UpdateWordDictationBackButton(false);
 
-    word_dictation_action_data_.resize(3);
+        word_dictation_action_data_.resize(3);
 
-    lv_obj_t* select_all_btn = lv_btn_create(word_dictation_content_);
-    lv_obj_set_size(select_all_btn, 78, 32);
-    lv_obj_set_pos(select_all_btn, 0, 6);
-    lv_obj_set_style_bg_opa(select_all_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(select_all_btn, 0, 0);
-    lv_obj_set_style_shadow_width(select_all_btn, 0, 0);
-    word_dictation_action_data_[0] = WordDictationActionData{this, kWordDictationActionSelectAll};
-    lv_obj_set_user_data(select_all_btn, &word_dictation_action_data_[0]);
-    lv_obj_add_event_cb(select_all_btn, OnWordDictationActionClicked, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* select_all_label = lv_label_create(select_all_btn);
-    lv_label_set_text(select_all_label, "全选");
-    lv_obj_center(select_all_label);
-    lv_obj_set_style_text_color(select_all_label, lv_color_hex(kWordDictationBlue), 0);
-    lv_obj_set_style_text_font(select_all_label, text_font, 0);
+        lv_obj_t* select_all_btn = lv_btn_create(word_dictation_content_);
+        lv_obj_set_size(select_all_btn, 78, 32);
+        lv_obj_set_pos(select_all_btn, 0, 6);
+        lv_obj_set_style_bg_opa(select_all_btn, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(select_all_btn, 0, 0);
+        lv_obj_set_style_shadow_width(select_all_btn, 0, 0);
+        word_dictation_action_data_[0] = WordDictationActionData{this, kWordDictationActionSelectAll};
+        lv_obj_set_user_data(select_all_btn, &word_dictation_action_data_[0]);
+        lv_obj_add_event_cb(select_all_btn, OnWordDictationActionClicked, LV_EVENT_CLICKED, nullptr);
+        lv_obj_t* select_all_label = lv_label_create(select_all_btn);
+        lv_label_set_text(select_all_label, "全选");
+        lv_obj_center(select_all_label);
+        lv_obj_set_style_text_color(select_all_label, lv_color_hex(kWordDictationBlue), 0);
+        lv_obj_set_style_text_font(select_all_label, text_font, 0);
 
-    lv_obj_t* clear_btn = lv_btn_create(word_dictation_content_);
-    lv_obj_set_size(clear_btn, 112, 32);
-    lv_obj_set_pos(clear_btn, LV_HOR_RES - 32 - 112, 6);
-    lv_obj_set_style_bg_opa(clear_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(clear_btn, 0, 0);
-    lv_obj_set_style_shadow_width(clear_btn, 0, 0);
-    word_dictation_action_data_[1] = WordDictationActionData{this, kWordDictationActionClearSelection};
-    lv_obj_set_user_data(clear_btn, &word_dictation_action_data_[1]);
-    lv_obj_add_event_cb(clear_btn, OnWordDictationActionClicked, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* clear_label = lv_label_create(clear_btn);
-    lv_label_set_text(clear_label, "取消选择");
-    lv_obj_center(clear_label);
-    lv_obj_set_style_text_color(clear_label, lv_color_hex(kWordDictationDangerText), 0);
-    lv_obj_set_style_text_font(clear_label, text_font, 0);
+        lv_obj_t* clear_btn = lv_btn_create(word_dictation_content_);
+        lv_obj_set_size(clear_btn, 112, 32);
+        lv_obj_set_pos(clear_btn, LV_HOR_RES - 32 - 112, 6);
+        lv_obj_set_style_bg_opa(clear_btn, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(clear_btn, 0, 0);
+        lv_obj_set_style_shadow_width(clear_btn, 0, 0);
+        word_dictation_action_data_[1] = WordDictationActionData{this, kWordDictationActionClearSelection};
+        lv_obj_set_user_data(clear_btn, &word_dictation_action_data_[1]);
+        lv_obj_add_event_cb(clear_btn, OnWordDictationActionClicked, LV_EVENT_CLICKED, nullptr);
+        lv_obj_t* clear_label = lv_label_create(clear_btn);
+        lv_label_set_text(clear_label, "取消选择");
+        lv_obj_center(clear_label);
+        lv_obj_set_style_text_color(clear_label, lv_color_hex(kWordDictationDangerText), 0);
+        lv_obj_set_style_text_font(clear_label, text_font, 0);
 
-    word_dictation_list_item_data_.resize(stage.words.size());
-    int y = 46;
-    for (size_t i = 0; i < stage.words.size(); ++i) {
-        const auto& word = stage.words[i];
-        lv_obj_t* item = CreatePageButton(word_dictation_content_, LV_HOR_RES - 32, 58);
-        lv_obj_set_pos(item, 0, y);
-        word_dictation_list_item_data_[i] = WordDictationListItemData{this, static_cast<int>(i)};
-        lv_obj_set_user_data(item, &word_dictation_list_item_data_[i]);
-        lv_obj_add_event_cb(item, OnWordDictationListItemClicked, LV_EVENT_CLICKED, nullptr);
+        word_dictation_list_item_data_.resize(stage.words.size());
+        int y = 46;
+        for (size_t i = 0; i < stage.words.size(); ++i) {
+            const auto& word = stage.words[i];
+            lv_obj_t* item = CreatePageButton(word_dictation_content_, LV_HOR_RES - 32, 58);
+            lv_obj_set_pos(item, 0, y);
+            word_dictation_list_item_data_[i] = WordDictationListItemData{this, static_cast<int>(i)};
+            lv_obj_set_user_data(item, &word_dictation_list_item_data_[i]);
+            lv_obj_add_event_cb(item, OnWordDictationListItemClicked, LV_EVENT_CLICKED, nullptr);
 
-        lv_obj_t* mark = lv_obj_create(item);
-        lv_obj_set_size(mark, 24, 24);
-        lv_obj_align(mark, LV_ALIGN_LEFT_MID, 14, 0);
-        lv_obj_set_style_radius(mark, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(mark, word.selected ? lv_color_hex(kWordDictationBlue) : lv_color_hex(0xD9E2F2), 0);
-        lv_obj_set_style_bg_opa(mark, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(mark, 0, 0);
-        lv_obj_clear_flag(mark, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_t* mark = lv_obj_create(item);
+            lv_obj_set_size(mark, 24, 24);
+            lv_obj_align(mark, LV_ALIGN_LEFT_MID, 14, 0);
+            lv_obj_set_style_radius(mark, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(mark, word.selected ? lv_color_hex(kWordDictationBlue) : lv_color_hex(0xD9E2F2), 0);
+            lv_obj_set_style_bg_opa(mark, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(mark, 0, 0);
+            lv_obj_clear_flag(mark, LV_OBJ_FLAG_CLICKABLE);
 
-        lv_obj_t* mark_label = lv_label_create(mark);
-        lv_label_set_text(mark_label, word.selected ? "v" : "");
-        lv_obj_center(mark_label);
-        lv_obj_set_style_text_color(mark_label, lv_color_white(), 0);
-        lv_obj_set_style_text_font(mark_label, text_font, 0);
+            lv_obj_t* mark_label = lv_label_create(mark);
+            lv_label_set_text(mark_label, word.selected ? "v" : "");
+            lv_obj_center(mark_label);
+            lv_obj_set_style_text_color(mark_label, lv_color_white(), 0);
+            lv_obj_set_style_text_font(mark_label, text_font, 0);
 
-        lv_obj_t* word_label = lv_label_create(item);
-        lv_label_set_text(word_label, word.text.c_str());
-        lv_obj_set_pos(word_label, 48, 10);
-        lv_obj_set_style_text_font(word_label, text_font, 0);
-        lv_obj_set_style_text_color(word_label, lv_color_hex(kWordDictationTitleText), 0);
+            lv_obj_t* word_label = lv_label_create(item);
+            lv_label_set_text(word_label, word.text.c_str());
+            lv_obj_set_pos(word_label, 48, 10);
+            lv_obj_set_style_text_font(word_label, text_font, 0);
+            lv_obj_set_style_text_color(word_label, lv_color_hex(kWordDictationTitleText), 0);
 
-        if (!word.note.empty()) {
-            lv_obj_t* note_label = lv_label_create(item);
-            lv_label_set_text(note_label, word.note.c_str());
-            lv_obj_set_pos(note_label, 48, 32);
-            lv_obj_set_style_text_font(note_label, text_font, 0);
-            lv_obj_set_style_text_color(note_label, lv_color_hex(kWordDictationMutedText), 0);
+            if (!word.note.empty()) {
+                lv_obj_t* note_label = lv_label_create(item);
+                lv_label_set_text(note_label, word.note.c_str());
+                lv_obj_set_pos(note_label, 48, 32);
+                lv_obj_set_style_text_font(note_label, text_font, 0);
+                lv_obj_set_style_text_color(note_label, lv_color_hex(kWordDictationMutedText), 0);
+            }
+
+            y += 68;
         }
 
-        y += 68;
+        const int selected_count = GetWordDictationSelectedWordCount();
+        char confirm_text[48];
+        snprintf(confirm_text, sizeof(confirm_text), "确认选择 (%d)", selected_count);
+        lv_obj_t* confirm_btn = CreatePrimaryButton(word_dictation_content_, LV_HOR_RES - 44, 44, confirm_text, text_font);
+        lv_obj_set_pos(confirm_btn, 6, y + 10);
+        word_dictation_action_data_[2] = WordDictationActionData{this, kWordDictationActionConfirmSelection};
+        lv_obj_set_user_data(confirm_btn, &word_dictation_action_data_[2]);
+        lv_obj_add_event_cb(confirm_btn, OnWordDictationActionClicked, LV_EVENT_CLICKED, nullptr);
     }
 
-    const int selected_count = GetWordDictationSelectedWordCount();
-    char confirm_text[48];
-    snprintf(confirm_text, sizeof(confirm_text), "确认选择 (%d)", selected_count);
-    lv_obj_t* confirm_btn = CreatePrimaryButton(word_dictation_content_, LV_HOR_RES - 44, 44, confirm_text, text_font);
-    lv_obj_set_pos(confirm_btn, 6, y + 10);
-    word_dictation_action_data_[2] = WordDictationActionData{this, kWordDictationActionConfirmSelection};
-    lv_obj_set_user_data(confirm_btn, &word_dictation_action_data_[2]);
-    lv_obj_add_event_cb(confirm_btn, OnWordDictationActionClicked, LV_EVENT_CLICKED, nullptr);
-
-    lv_screen_load(word_dictation_screen_);
-    MoveStatusBarToScreen(word_dictation_screen_);
+    LoadScreen(word_dictation_screen_);
 }
 
 void UiLcdDisplay::ShowWordDictationSummaryScreen() {
@@ -677,16 +685,17 @@ void UiLcdDisplay::ShowWordDictationSummaryScreen() {
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     auto* text_font = lvgl_theme->text_font()->font();
 
-    DisplayLockGuard lock(this);
-    word_dictation_view_ = WordDictationView::kSummary;
-    word_dictation_running_count_label_ = nullptr;
-    word_dictation_running_hint_label_ = nullptr;
-    word_dictation_action_data_.clear();
-    word_dictation_list_item_data_.clear();
-    lv_obj_clean(word_dictation_content_);
-    lv_label_set_text(word_dictation_title_label_, GetWordDictationStageTitle().c_str());
-    lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
-    UpdateWordDictationBackButton(false);
+    {
+        DisplayLockGuard lock(this);
+        word_dictation_view_ = WordDictationView::kSummary;
+        word_dictation_running_count_label_ = nullptr;
+        word_dictation_running_hint_label_ = nullptr;
+        word_dictation_action_data_.clear();
+        word_dictation_list_item_data_.clear();
+        lv_obj_clean(word_dictation_content_);
+        lv_label_set_text(word_dictation_title_label_, GetWordDictationStageTitle().c_str());
+        lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
+        UpdateWordDictationBackButton(false);
 
     lv_obj_t* card = lv_obj_create(word_dictation_content_);
     lv_obj_set_size(card, LV_HOR_RES - 44, 170);
@@ -728,24 +737,25 @@ void UiLcdDisplay::ShowWordDictationSummaryScreen() {
     lv_obj_set_user_data(settings_btn, &word_dictation_action_data_[1]);
     lv_obj_add_event_cb(settings_btn, OnWordDictationActionClicked, LV_EVENT_CLICKED, nullptr);
 
-    lv_screen_load(word_dictation_screen_);
-    MoveStatusBarToScreen(word_dictation_screen_);
+    }
+    LoadScreen(word_dictation_screen_);
 }
 
 void UiLcdDisplay::ShowWordDictationSettingsScreen() {
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     auto* text_font = lvgl_theme->text_font()->font();
 
-    DisplayLockGuard lock(this);
-    word_dictation_view_ = WordDictationView::kSettings;
-    word_dictation_running_count_label_ = nullptr;
-    word_dictation_running_hint_label_ = nullptr;
-    word_dictation_action_data_.clear();
-    word_dictation_list_item_data_.clear();
-    lv_obj_clean(word_dictation_content_);
-    lv_label_set_text(word_dictation_title_label_, "听写设置");
-    lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
-    UpdateWordDictationBackButton(false);
+    {
+        DisplayLockGuard lock(this);
+        word_dictation_view_ = WordDictationView::kSettings;
+        word_dictation_running_count_label_ = nullptr;
+        word_dictation_running_hint_label_ = nullptr;
+        word_dictation_action_data_.clear();
+        word_dictation_list_item_data_.clear();
+        lv_obj_clean(word_dictation_content_);
+        lv_label_set_text(word_dictation_title_label_, "听写设置");
+        lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
+        UpdateWordDictationBackButton(false);
 
     const std::array<std::pair<const char*, std::string>, 4> items = {{
         {"听写顺序", word_dictation_settings_.random_order ? "随机听写" : "顺序听写"},
@@ -790,23 +800,24 @@ void UiLcdDisplay::ShowWordDictationSettingsScreen() {
     lv_obj_set_user_data(save_btn, &word_dictation_action_data_[4]);
     lv_obj_add_event_cb(save_btn, OnWordDictationActionClicked, LV_EVENT_CLICKED, nullptr);
 
-    lv_screen_load(word_dictation_screen_);
-    MoveStatusBarToScreen(word_dictation_screen_);
+    }
+    LoadScreen(word_dictation_screen_);
 }
 
 void UiLcdDisplay::ShowWordDictationCountdownScreen() {
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     auto* text_font = lvgl_theme->text_font()->font();
 
-    DisplayLockGuard lock(this);
-    word_dictation_view_ = WordDictationView::kCountdown;
-    word_dictation_action_data_.clear();
-    word_dictation_list_item_data_.clear();
-    word_dictation_running_count_label_ = nullptr;
-    word_dictation_running_hint_label_ = nullptr;
-    lv_obj_clean(word_dictation_content_);
-    lv_label_set_text(word_dictation_title_label_, "");
-    lv_obj_add_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
+    {
+        DisplayLockGuard lock(this);
+        word_dictation_view_ = WordDictationView::kCountdown;
+        word_dictation_action_data_.clear();
+        word_dictation_list_item_data_.clear();
+        word_dictation_running_count_label_ = nullptr;
+        word_dictation_running_hint_label_ = nullptr;
+        lv_obj_clean(word_dictation_content_);
+        lv_label_set_text(word_dictation_title_label_, "");
+        lv_obj_add_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
 
     char countdown_text[16];
     snprintf(countdown_text, sizeof(countdown_text), "%d", word_dictation_countdown_value_);
@@ -826,22 +837,23 @@ void UiLcdDisplay::ShowWordDictationCountdownScreen() {
     lv_obj_set_style_text_font(word_dictation_running_hint_label_, text_font, 0);
     lv_obj_set_style_text_color(word_dictation_running_hint_label_, lv_color_hex(kWordDictationBlue), 0);
 
-    lv_screen_load(word_dictation_screen_);
-    MoveStatusBarToScreen(word_dictation_screen_);
+    }
+    LoadScreen(word_dictation_screen_);
 }
 
 void UiLcdDisplay::ShowWordDictationRunningScreen() {
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     auto* text_font = lvgl_theme->text_font()->font();
 
-    DisplayLockGuard lock(this);
-    word_dictation_view_ = WordDictationView::kRunning;
-    word_dictation_action_data_.clear();
-    word_dictation_list_item_data_.clear();
-    lv_obj_clean(word_dictation_content_);
-    lv_label_set_text(word_dictation_title_label_, "");
-    lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
-    UpdateWordDictationBackButton(true);
+    {
+        DisplayLockGuard lock(this);
+        word_dictation_view_ = WordDictationView::kRunning;
+        word_dictation_action_data_.clear();
+        word_dictation_list_item_data_.clear();
+        lv_obj_clean(word_dictation_content_);
+        lv_label_set_text(word_dictation_title_label_, "");
+        lv_obj_clear_flag(word_dictation_back_button_, LV_OBJ_FLAG_HIDDEN);
+        UpdateWordDictationBackButton(true);
 
     word_dictation_running_count_label_ = lv_label_create(word_dictation_content_);
     lv_label_set_text(word_dictation_running_count_label_, "0/0");
@@ -856,8 +868,8 @@ void UiLcdDisplay::ShowWordDictationRunningScreen() {
     lv_obj_set_style_text_font(word_dictation_running_hint_label_, text_font, 0);
     lv_obj_set_style_text_color(word_dictation_running_hint_label_, lv_color_hex(kWordDictationMutedText), 0);
 
-    lv_screen_load(word_dictation_screen_);
-    MoveStatusBarToScreen(word_dictation_screen_);
+    }
+    LoadScreen(word_dictation_screen_);
 }
 
 void UiLcdDisplay::SelectWordDictationTextbook(int index) {

@@ -411,9 +411,7 @@ void UiLcdDisplay::ShowSettingsScreen() {
         InitializeSettingsScreen();
     }
 
-    DisplayLockGuard lock(this);
-    lv_screen_load(settings_screen_);
-    MoveStatusBarToScreen(settings_screen_);
+    LoadScreen(settings_screen_);
 }
 
 void UiLcdDisplay::ShowNetworkSwitchScreen() {
@@ -422,9 +420,7 @@ void UiLcdDisplay::ShowNetworkSwitchScreen() {
     }
 
     RefreshNetworkSwitchScreen();
-    DisplayLockGuard lock(this);
-    lv_screen_load(network_switch_screen_);
-    MoveStatusBarToScreen(network_switch_screen_);
+    LoadScreen(network_switch_screen_);
 }
 
 void UiLcdDisplay::ShowServerSwitchScreen() {
@@ -433,9 +429,7 @@ void UiLcdDisplay::ShowServerSwitchScreen() {
     }
 
     RefreshServerSwitchScreen();
-    DisplayLockGuard lock(this);
-    lv_screen_load(server_switch_screen_);
-    MoveStatusBarToScreen(server_switch_screen_);
+    LoadScreen(server_switch_screen_);
 }
 
 void UiLcdDisplay::ShowLanguageSwitchScreen() {
@@ -444,9 +438,58 @@ void UiLcdDisplay::ShowLanguageSwitchScreen() {
     }
 
     RefreshLanguageSwitchScreen();
+    LoadScreen(language_switch_screen_);
+}
+
+void UiLcdDisplay::DestroySettingsScreen() {
     DisplayLockGuard lock(this);
-    lv_screen_load(language_switch_screen_);
-    MoveStatusBarToScreen(language_switch_screen_);
+    if (settings_screen_ != nullptr) {
+        lv_obj_del(settings_screen_);
+        settings_screen_ = nullptr;
+    }
+
+    settings_title_label_ = nullptr;
+    settings_item_name_labels_.fill(nullptr);
+}
+
+void UiLcdDisplay::DestroyNetworkSwitchScreen() {
+    DisplayLockGuard lock(this);
+    if (network_switch_screen_ != nullptr) {
+        lv_obj_del(network_switch_screen_);
+        network_switch_screen_ = nullptr;
+    }
+
+    network_switch_title_label_ = nullptr;
+    network_switch_hint_label_ = nullptr;
+    network_switch_option_buttons_.fill(nullptr);
+    network_switch_option_labels_.fill(nullptr);
+    network_switch_option_state_labels_.fill(nullptr);
+}
+
+void UiLcdDisplay::DestroyServerSwitchScreen() {
+    DisplayLockGuard lock(this);
+    if (server_switch_screen_ != nullptr) {
+        lv_obj_del(server_switch_screen_);
+        server_switch_screen_ = nullptr;
+    }
+
+    server_switch_title_label_ = nullptr;
+    server_switch_option_buttons_.fill(nullptr);
+    server_switch_option_labels_.fill(nullptr);
+    server_switch_option_state_labels_.fill(nullptr);
+}
+
+void UiLcdDisplay::DestroyLanguageSwitchScreen() {
+    DisplayLockGuard lock(this);
+    if (language_switch_screen_ != nullptr) {
+        lv_obj_del(language_switch_screen_);
+        language_switch_screen_ = nullptr;
+    }
+
+    language_switch_title_label_ = nullptr;
+    language_switch_option_buttons_.fill(nullptr);
+    language_switch_option_labels_.fill(nullptr);
+    language_switch_option_state_labels_.fill(nullptr);
 }
 
 void UiLcdDisplay::RefreshNetworkSwitchScreen() {
