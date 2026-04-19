@@ -8,14 +8,18 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cctype>
 #include <cstdio>
 #include <ctime>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace {
 
 constexpr int kStatusBarHeight = 27;
 constexpr int kAlarmRingSegmentCount = 24;
+constexpr const char* kAlarmCountdownPlaceholder = "--:--";
 constexpr std::array<const char*, 7> kWeekdayShortNames = {"日", "一", "二", "三", "四", "五", "六"};
 
 lv_obj_t* TakeValidObject(lv_obj_t*& object) {
@@ -66,6 +70,61 @@ std::string FormatCurrentWeekdayForDisplay(bool has_valid_time, time_t now) {
     return std::string("星期") + kWeekdayShortNames[weekday];
 }
 
+bool IsDigitsOnly(std::string_view text) {
+    if (text.empty()) {
+        return false;
+    }
+
+    for (const char ch : text) {
+        if (!std::isdigit(static_cast<unsigned char>(ch))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool TryParseAlarmCountdownSeconds(std::string_view text, int& total_seconds) {
+    total_seconds = -1;
+    if (text.empty() || text == kAlarmCountdownPlaceholder) {
+        return false;
+    }
+
+    std::vector<int> parts;
+    size_t start = 0;
+    while (start <= text.size()) {
+        const size_t end = text.find(':', start);
+        const std::string_view part =
+            end == std::string_view::npos ? text.substr(start) : text.substr(start, end - start);
+        if (!IsDigitsOnly(part)) {
+            return false;
+        }
+
+        parts.push_back(std::stoi(std::string(part)));
+        if (end == std::string_view::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+
+    if (parts.size() != 2) {
+        return false;
+    }
+
+    total_seconds = std::max(0, parts[0]) * 3600 + std::max(0, parts[1]) * 60;
+    return total_seconds > 0;
+}
+
+lv_color_t GetAlarmRingActiveColor(int index) {
+    if (index < kAlarmRingSegmentCount / 3) {
+        return lv_color_hex(0x2D6BFF);
+    }
+    if (index < (kAlarmRingSegmentCount * 2) / 3) {
+        return lv_color_hex(0xFFC107);
+    }
+    return lv_color_hex(0xFF7A59);
+}
+
 } // namespace
 
 void UiLcdDisplay::ResetAlarmPanelObjects() {
@@ -82,6 +141,9 @@ void UiLcdDisplay::ResetAlarmPanelObjects() {
     alarm_countdown_label_ = nullptr;
     alarm_hourglass_label_ = nullptr;
     alarm_ring_segments_.fill(nullptr);
+    alarm_countdown_active_ = false;
+    alarm_countdown_initial_seconds_ = -1;
+    alarm_countdown_last_remaining_seconds_ = -1;
 }
 
 void UiLcdDisplay::InitializeAlarmSupport() {
@@ -163,8 +225,8 @@ void UiLcdDisplay::InitializeAlarmPanel() {
 
     alarm_subtitle_label_ = lv_label_create(alarm_panel_);
     lv_obj_set_width(alarm_subtitle_label_, LV_HOR_RES - 24);
-    lv_obj_align(alarm_subtitle_label_, LV_ALIGN_TOP_MID, 0, 8);
-    lv_obj_set_style_text_align(alarm_subtitle_label_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(alarm_subtitle_label_, LV_ALIGN_TOP_LEFT, 12, 8);
+    lv_obj_set_style_text_align(alarm_subtitle_label_, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_font(alarm_subtitle_label_, lvgl_theme->text_font()->font(), 0);
     lv_obj_set_style_text_color(alarm_subtitle_label_, lv_color_hex(0x9CA3AF), 0);
     lv_label_set_text(alarm_subtitle_label_, "");
@@ -176,6 +238,7 @@ void UiLcdDisplay::InitializeAlarmPanel() {
     lv_obj_set_style_text_letter_space(alarm_now_time_label_, 2, 0);
 
     alarm_date_label_ = lv_label_create(alarm_panel_);
+    lv_label_set_long_mode(alarm_date_label_, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_font(alarm_date_label_, lvgl_theme->text_font()->font(), 0);
     lv_obj_set_style_text_color(alarm_date_label_, lv_color_hex(0x6B7280), 0);
 
@@ -258,6 +321,7 @@ void UiLcdDisplay::RefreshAlarmUi() {
     const std::string now_text = FormatCurrentTimeForDisplay(has_valid_time, now);
     const std::string date_text = FormatCurrentDateForDisplay(has_valid_time, now);
     const std::string weekday_text = FormatCurrentWeekdayForDisplay(has_valid_time, now);
+    const std::string countdown_text = kAlarmCountdownPlaceholder;
 
     lv_obj_set_style_bg_color(ai_screen_, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(ai_screen_, LV_OPA_COVER, 0);
@@ -293,14 +357,22 @@ void UiLcdDisplay::RefreshAlarmUi() {
     const int left_content_w = std::max(104, ring_x - left_margin - 1);
 
     lv_obj_set_width(alarm_now_time_label_, left_content_w);
-    lv_obj_set_pos(alarm_now_time_label_, left_margin, 36);
+    lv_obj_set_pos(alarm_now_time_label_, left_margin, 48);
     lv_obj_set_style_transform_scale(alarm_now_time_label_, left_content_w > 124 ? 470 : 420, 0);
     lv_obj_set_style_transform_pivot_x(alarm_now_time_label_, 0, 0);
     lv_obj_set_style_transform_pivot_y(alarm_now_time_label_, 0, 0);
     lv_label_set_text(alarm_now_time_label_, now_text.c_str());
 
+    lv_obj_clear_flag(alarm_subtitle_label_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_width(alarm_subtitle_label_, left_content_w);
+    lv_obj_set_pos(alarm_subtitle_label_, left_margin, 102);
+    lv_obj_set_style_transform_scale(alarm_subtitle_label_, 185, 0);
+    lv_obj_set_style_transform_pivot_x(alarm_subtitle_label_, 0, 0);
+    lv_obj_set_style_transform_pivot_y(alarm_subtitle_label_, 0, 0);
+    lv_label_set_text(alarm_subtitle_label_, weekday_text.c_str());
+
     lv_obj_set_width(alarm_date_label_, left_content_w + 8);
-    lv_obj_set_pos(alarm_date_label_, left_margin, 116);
+    lv_obj_set_pos(alarm_date_label_, left_margin, 120);
     lv_obj_set_style_transform_scale(alarm_date_label_, 210, 0);
     lv_obj_set_style_transform_pivot_x(alarm_date_label_, 0, 0);
     lv_obj_set_style_transform_pivot_y(alarm_date_label_, 0, 0);
@@ -312,35 +384,57 @@ void UiLcdDisplay::RefreshAlarmUi() {
     lv_label_set_text(alarm_next_icon_label_, FONT_AWESOME_BELL);
     lv_label_set_text(alarm_next_time_label_, "暂无闹钟");
 
-    lv_obj_set_pos(alarm_hint_label_, left_margin, panel_h - 18);
-    lv_obj_set_width(alarm_hint_label_, left_content_w);
-    lv_label_set_text(alarm_hint_label_,
-                      has_valid_time ? "说“明早七点叫我起床”可以创建闹钟"
-                                     : "联网后会自动同步本地时间");
+    lv_obj_add_flag(alarm_hint_label_, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(alarm_hint_label_, "");
 
     lv_obj_set_size(alarm_ring_frame_, ring_size, ring_size);
     lv_obj_set_pos(alarm_ring_frame_, ring_x, ring_y);
     lv_obj_set_size(alarm_ring_inner_, inner_size, inner_size);
     lv_obj_center(alarm_ring_inner_);
 
-    lv_obj_set_style_transform_scale(alarm_clock_time_label_, inner_size > 116 ? 250 : 220, 0);
-    lv_obj_set_style_transform_pivot_x(alarm_clock_time_label_, 0, 0);
-    lv_obj_set_style_transform_pivot_y(alarm_clock_time_label_, 0, 0);
-    lv_obj_align(alarm_clock_time_label_, LV_ALIGN_CENTER, 0, -34);
-    lv_label_set_text(alarm_clock_time_label_, weekday_text.c_str());
+    lv_obj_add_flag(alarm_clock_time_label_, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(alarm_clock_time_label_, "");
 
     lv_obj_set_style_transform_scale(alarm_countdown_label_, inner_size > 116 ? 360 : 330, 0);
     lv_obj_set_style_transform_pivot_x(alarm_countdown_label_, 0, 0);
     lv_obj_set_style_transform_pivot_y(alarm_countdown_label_, 0, 0);
     lv_obj_set_style_text_letter_space(alarm_countdown_label_, 1, 0);
     lv_obj_align(alarm_countdown_label_, LV_ALIGN_CENTER, 0, -2);
-    lv_label_set_text(alarm_countdown_label_, "--:--");
+    lv_label_set_text(alarm_countdown_label_, countdown_text.c_str());
 
     lv_obj_set_style_transform_scale(alarm_hourglass_label_, inner_size > 116 ? 180 : 165, 0);
     lv_obj_set_style_transform_pivot_x(alarm_hourglass_label_, 0, 0);
     lv_obj_set_style_transform_pivot_y(alarm_hourglass_label_, 0, 0);
     lv_obj_align(alarm_hourglass_label_, LV_ALIGN_CENTER, 0, 34);
     lv_label_set_text(alarm_hourglass_label_, FONT_AWESOME_ALARM_CLOCK);
+
+    int countdown_remaining_seconds = -1;
+    const bool countdown_parseable = TryParseAlarmCountdownSeconds(countdown_text, countdown_remaining_seconds);
+    const bool countdown_started = countdown_text != kAlarmCountdownPlaceholder;
+    if (!countdown_started) {
+        alarm_countdown_active_ = false;
+        alarm_countdown_initial_seconds_ = -1;
+        alarm_countdown_last_remaining_seconds_ = -1;
+    } else {
+        if (!alarm_countdown_active_ || alarm_countdown_last_remaining_seconds_ < 0 ||
+            (countdown_parseable && countdown_remaining_seconds > alarm_countdown_last_remaining_seconds_)) {
+            alarm_countdown_active_ = true;
+            alarm_countdown_initial_seconds_ = countdown_parseable ? countdown_remaining_seconds : 1;
+        }
+        alarm_countdown_last_remaining_seconds_ = countdown_parseable ? countdown_remaining_seconds : -1;
+    }
+
+    int highlighted_segment_count = 0;
+    if (countdown_started) {
+        if (!countdown_parseable || alarm_countdown_initial_seconds_ <= 0) {
+            highlighted_segment_count = kAlarmRingSegmentCount;
+        } else {
+            highlighted_segment_count = static_cast<int>(std::ceil(
+                static_cast<double>(countdown_remaining_seconds) * kAlarmRingSegmentCount /
+                static_cast<double>(alarm_countdown_initial_seconds_)));
+            highlighted_segment_count = std::clamp(highlighted_segment_count, 0, kAlarmRingSegmentCount);
+        }
+    }
 
     constexpr double kPi = 3.14159265358979323846;
     const int segment_height = std::max(8, ring_size / 14);
@@ -357,14 +451,8 @@ void UiLcdDisplay::RefreshAlarmUi() {
         const int x = static_cast<int>(std::lround(center + std::cos(angle_rad) * radius_x - segment_width / 2.0));
         const int y = static_cast<int>(std::lround(center + std::sin(angle_rad) * radius_y - segment_height / 2.0));
         const int rotation = static_cast<int>(std::lround((angle_deg + 90.0) * 10.0));
-        const bool active = i < kAlarmRingSegmentCount / 2;
-        const lv_color_t color = active
-                                     ? (i < kAlarmRingSegmentCount / 4
-                                            ? lv_color_hex(0xFF4136)
-                                            : (i < kAlarmRingSegmentCount / 2
-                                                   ? lv_color_hex(0xFFC107)
-                                                   : lv_color_hex(0x2D6BFF)))
-                                     : lv_color_hex(0xE5E7EB);
+        const bool active = i < highlighted_segment_count;
+        const lv_color_t color = active ? GetAlarmRingActiveColor(i) : lv_color_hex(0xD1D5DB);
 
         lv_obj_set_size(alarm_ring_segments_[i], segment_width, segment_height);
         lv_obj_set_pos(alarm_ring_segments_[i], x, y);
@@ -372,7 +460,7 @@ void UiLcdDisplay::RefreshAlarmUi() {
         lv_obj_set_style_transform_pivot_y(alarm_ring_segments_[i], segment_height / 2, 0);
         lv_obj_set_style_transform_rotation(alarm_ring_segments_[i], rotation, 0);
         lv_obj_set_style_bg_color(alarm_ring_segments_[i], color, 0);
-        lv_obj_set_style_bg_opa(alarm_ring_segments_[i], active ? LV_OPA_COVER : LV_OPA_90, 0);
+        lv_obj_set_style_bg_opa(alarm_ring_segments_[i], active ? LV_OPA_COVER : LV_OPA_80, 0);
     }
 }
 

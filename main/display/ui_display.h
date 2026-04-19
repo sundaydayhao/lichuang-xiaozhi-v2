@@ -223,6 +223,9 @@ private:
     lv_obj_t* alarm_countdown_label_ = nullptr;
     lv_obj_t* alarm_hourglass_label_ = nullptr;
     std::array<lv_obj_t*, 24> alarm_ring_segments_ = {};
+    bool alarm_countdown_active_ = false;
+    int alarm_countdown_initial_seconds_ = -1;
+    int alarm_countdown_last_remaining_seconds_ = -1;
 
     lv_obj_t* word_dictation_screen_ = nullptr;
     lv_obj_t* word_dictation_title_label_ = nullptr;
