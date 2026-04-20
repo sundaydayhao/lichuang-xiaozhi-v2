@@ -41,21 +41,24 @@
 namespace {
 
 const char* TAG = "CompactDisplay";
-constexpr int kStatusBarHeight = 27;
-constexpr int kMenuIconOriginalSize = 48;
-constexpr int kMenuSwipeThreshold = 14;
-constexpr int kMenuButtonHitPadding = 8;
-constexpr int kVisionOptionId = 4;
+
+constexpr int kAiAlarmOptionId = 1;
 constexpr int kEncyclopediaOptionId = 2;
 constexpr int kOralPracticeOptionId = 3;
+constexpr int kVisionOptionId = 4;
 constexpr int kAiMassageOptionId = 5;
 constexpr int kRemoteSelfieOptionId = 6;
 constexpr int kAiPrintOptionId = 7;
 constexpr int kWordDictationOptionId = 8;
 constexpr int kFaceReadingOptionId = 9;
 constexpr int kMagicMirrorOptionId = 10;
-constexpr int kAiAlarmOptionId = 1;
+constexpr int kSleepMusicOptionId = 11;
 constexpr int kSettingsOptionId = 12;
+
+constexpr int kStatusBarHeight = 27;
+constexpr int kMenuIconOriginalSize = 48;
+constexpr int kMenuSwipeThreshold = 14;
+constexpr int kMenuButtonHitPadding = 8;
 constexpr int kEncyclopediaPromptTimeoutSeconds = 10;
 constexpr uint64_t kDialogueSceneTimerPeriodUs = 200 * 1000;
 constexpr char kVisionDefaultQuestion[] = "拍摄到的东西是什么";
@@ -298,29 +301,29 @@ void UiLcdDisplay::SetCameraPreviewCallback(std::function<void()> callback) {
 
 const char* UiLcdDisplay::GetMenuText(int option_id) const {
     switch (option_id) {
-    case 1:
+    case kAiAlarmOptionId:
         return "AI闹钟";
-    case 2:
+    case kEncyclopediaOptionId:
         return "百科问答";
-    case 3:
+    case kOralPracticeOptionId:
         return "口语陪练";
-    case 4:
+    case kVisionOptionId:
         return "拍识万物";
-    case 5:
-        return "AI按摩";
-    case 6:
-        return "遥控自拍";
-    case 7:
+    case kAiMassageOptionId:
+        return "除皱按摩";
+    case kRemoteSelfieOptionId:
+        return "AI自拍杆";
+    case kAiPrintOptionId:
         return "AI打印";
-    case 8:
+    case kWordDictationOptionId:
         return "单词听写";
-    case 9:
+    case kFaceReadingOptionId:
         return "看相";
-    case 10:
+    case kMagicMirrorOptionId:
         return "魔镜美妆";
-    case 11:
+    case kSleepMusicOptionId:
         return "助眠音乐";
-    case 12:
+    case kSettingsOptionId:
         return "设置";
     default:
         return "";
@@ -329,29 +332,29 @@ const char* UiLcdDisplay::GetMenuText(int option_id) const {
 
 const char* UiLcdDisplay::GetMenuIconAssetName(int option_id) const {
     switch (option_id) {
-    case 1:
+    case kAiAlarmOptionId:
         return "menu_ai_alarm.png";
-    case 2:
+    case kEncyclopediaOptionId:
         return "menu_encyclopedia.png";
-    case 3:
+    case kOralPracticeOptionId:
         return "menu_oral_practice.png";
-    case 4:
+    case kVisionOptionId:
         return "menu_vision.png";
-    case 5:
+    case kAiMassageOptionId:
         return "menu_ai_massage.png";
-    case 6:
+    case kRemoteSelfieOptionId:
         return "menu_remote_selfie.png";
-    case 7:
+    case kAiPrintOptionId:
         return "menu_ai_print.png";
-    case 8:
+    case kWordDictationOptionId:
         return "menu_word_dictation.png";
-    case 9:
+    case kFaceReadingOptionId:
         return "menu_face_reading.png";
-    case 10:
+    case kMagicMirrorOptionId:
         return "menu_magic_mirror.png";
-    case 11:
+    case kSleepMusicOptionId:
         return "menu_sleep_music.png";
-    case 12:
+    case kSettingsOptionId:
         return "menu_settings.png";
     default:
         return nullptr;
@@ -360,15 +363,15 @@ const char* UiLcdDisplay::GetMenuIconAssetName(int option_id) const {
 
 const char* UiLcdDisplay::GetFeatureBackgroundAssetName(int option_id) const {
     switch (option_id) {
-    case 2:
+    case kEncyclopediaOptionId:
         return "bg_encyclopedia.png";
-    case 3:
+    case kOralPracticeOptionId:
         return "bg_oral_practice.png";
-    case 5:
+    case kAiMassageOptionId:
         return "bg_ai_massage.png";
-    case 8:
+    case kWordDictationOptionId:
         return "bg_word_dictation.png";
-    case 9:
+    case kFaceReadingOptionId:
         return "bg_face_reading.png";
     default:
         return nullptr;
@@ -1867,7 +1870,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         return;
     }
 
-    if (option_id == 11) {
+    if (option_id == kSleepMusicOptionId) {
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
         HideAlarmPanel();
