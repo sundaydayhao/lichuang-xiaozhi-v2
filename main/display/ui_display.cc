@@ -236,7 +236,7 @@ UiLcdDisplay::UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_han
         .skip_unhandled_events = true,
     };
     ESP_ERROR_CHECK(esp_timer_create(&dialogue_scene_timer_args, &dialogue_scene_timer_));
-    InitializeAlarmSupport();
+    UiMenuAiAlarm::InitializeSupport(*this);
     InitializeWordDictationSupport();
     InitializeSleepMusicSupport();
 
@@ -256,7 +256,7 @@ UiLcdDisplay::~UiLcdDisplay() {
     }
     DeinitializeSleepMusicSupport();
     DeinitializeWordDictationSupport();
-    DeinitializeAlarmSupport();
+    UiMenuAiAlarm::DeinitializeSupport(*this);
     BleHid::GetInstance().OnConnectionStateChanged({});
 }
 
@@ -469,22 +469,7 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
 
     switch (option_id) {
     case kAiAlarmOptionId:
-        scene = "ai_alarm";
-        mode = "countdown_alarm";
-        instructions =
-            "You are an AI alarm assistant. "
-            "Always reply in the current reply_language. "
-            "When the user asks for a relative timer or reminder such as "
-            "'15分钟后提醒我上课', call self.ai_alarm.set_timer. "
-            "Convert the duration into delay_seconds. "
-            "Put the short reminder content into reminder. "
-            "When the user asks to cancel, stop, or clear the timer, call "
-            "self.ai_alarm.cancel_timer. "
-            "When the user asks whether a timer is active, call "
-            "self.ai_alarm.get_status. "
-            "Do not claim a timer is set unless the tool call succeeds. "
-            "After a tool call, reply briefly and clearly.";
-        break;
+        return UiMenuAiAlarm::BuildScenePayload(*this);
     case kEncyclopediaOptionId:
         scene = "encyclopedia";
         mode = "knowledge_guide";
@@ -1145,7 +1130,7 @@ void UiLcdDisplay::EnterDialogueScene(int option_id) {
     ClearAiSceneMessages();
     if (option_id == kAiAlarmOptionId) {
         ApplyFeatureVisual(option_id);
-        ShowAlarmPanel();
+        UiMenuAiAlarm::ShowPanel(*this);
     } else if (option_id == kAiPrintOptionId) {
         ApplyFeatureVisual(option_id);
         ShowAiPrintListeningState();
@@ -1330,7 +1315,7 @@ void UiLcdDisplay::InitializeMainMenu() {
     RefreshMenuIconImages();
 
     MoveStatusBarToScreen(menu_screen_);
-    InitializeAlarmPanel();
+    UiMenuAiAlarm::InitializePanel(*this);
     ai_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
     ai_back_button_ = CreateBackButton(ai_screen_, &ai_back_button_data_);
     UpdateVisionAiBadgeVisibility();
@@ -1584,16 +1569,7 @@ bool UiLcdDisplay::ShouldUseTransparentStatusBar(lv_obj_t* target_screen) {
         return false;
     }
 
-    if (alarm_panel_ != nullptr && !lv_obj_is_valid(alarm_panel_)) {
-        ResetAlarmPanelObjects();
-        return true;
-    }
-
-    if (alarm_panel_ != nullptr && !lv_obj_has_flag(alarm_panel_, LV_OBJ_FLAG_HIDDEN)) {
-        return false;
-    }
-
-    return true;
+    return !UiMenuAiAlarm::IsPanelVisible(*this);
 }
 
 void UiLcdDisplay::UpdateStatusBarAppearance(lv_obj_t* target_screen) {
@@ -1842,7 +1818,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
             lv_label_set_text(camera_ble_status_label_, "蓝牙启动失败，请返回重试");
         }
 
-        HideAlarmPanel();
+        UiMenuAiAlarm::HidePanel(*this);
         ClearFeatureVisual();
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
@@ -1855,7 +1831,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     if (option_id == kSettingsOptionId) {
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
-        HideAlarmPanel();
+        UiMenuAiAlarm::HidePanel(*this);
         ClearFeatureVisual();
         ShowSettingsScreen();
         return;
@@ -1864,7 +1840,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     if (option_id == kWordDictationOptionId) {
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
-        HideAlarmPanel();
+        UiMenuAiAlarm::HidePanel(*this);
         ClearFeatureVisual();
         ShowWordDictationTextbookScreen();
         return;
@@ -1873,7 +1849,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     if (option_id == kSleepMusicOptionId) {
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
-        HideAlarmPanel();
+        UiMenuAiAlarm::HidePanel(*this);
         ClearFeatureVisual();
         ShowSleepMusicScreen();
         return;
@@ -1887,7 +1863,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
     if (IsDialogueSceneOption(option_id)) {
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
-        HideAlarmPanel();
+        UiMenuAiAlarm::HidePanel(*this);
         EnterDialogueScene(option_id);
         {
             DisplayLockGuard lock(this);
@@ -1899,9 +1875,9 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 
     ApplyFeatureVisual(option_id);
     if (option_id == kAiAlarmOptionId) {
-        ShowAlarmPanel();
+        UiMenuAiAlarm::ShowPanel(*this);
     } else {
-        HideAlarmPanel();
+        UiMenuAiAlarm::HidePanel(*this);
     }
 
     {
@@ -1936,7 +1912,7 @@ void UiLcdDisplay::ReturnToMainMenu() {
     word_dictation_view_ = WordDictationView::kHidden;
     gallery_swipe_enabled_ = false;
     StopCameraPreview();
-    HideAlarmPanel();
+    UiMenuAiAlarm::HidePanel(*this);
     ClearFeatureVisual();
     {
         DisplayLockGuard lock(this);
@@ -1949,7 +1925,7 @@ void UiLcdDisplay::ReturnToCameraScreen() {
     gallery_swipe_enabled_ = true;
     Application::GetInstance().SetSceneContextPayload(BuildVisionScenePayload());
     SetPreviewPresentationMode(PreviewPresentationMode::kOverlay);
-    HideAlarmPanel();
+    UiMenuAiAlarm::HidePanel(*this);
     ApplyFeatureVisual(kVisionOptionId);
     {
         DisplayLockGuard lock(this);

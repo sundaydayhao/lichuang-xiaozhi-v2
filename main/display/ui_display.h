@@ -2,6 +2,7 @@
 #define UI_DISPLAY_H
 
 #include "lcd_display.h"
+#include "ui_menu_ai_alarm.h"
 #include "device_state.h"
 
 #include <array>
@@ -51,6 +52,7 @@ public:
 
 private:
     friend class UiPrintPanel;
+    friend class UiMenuAiAlarm;
 
     struct MenuButtonData {
         UiLcdDisplay* display = nullptr;
@@ -229,23 +231,7 @@ private:
     std::unique_ptr<LvglImage> current_photo_image_;
     std::vector<std::string> photo_files_;
     std::map<std::string, std::shared_ptr<LvglImage>> asset_image_cache_;
-    esp_timer_handle_t alarm_ui_timer_ = nullptr;
-    lv_obj_t* alarm_panel_ = nullptr;
-    lv_obj_t* alarm_subtitle_label_ = nullptr;
-    lv_obj_t* alarm_now_time_label_ = nullptr;
-    lv_obj_t* alarm_date_label_ = nullptr;
-    lv_obj_t* alarm_hint_label_ = nullptr;
-    lv_obj_t* alarm_next_icon_label_ = nullptr;
-    lv_obj_t* alarm_next_time_label_ = nullptr;
-    lv_obj_t* alarm_ring_frame_ = nullptr;
-    lv_obj_t* alarm_ring_inner_ = nullptr;
-    lv_obj_t* alarm_clock_time_label_ = nullptr;
-    lv_obj_t* alarm_countdown_label_ = nullptr;
-    lv_obj_t* alarm_hourglass_label_ = nullptr;
-    std::array<lv_obj_t*, 24> alarm_ring_segments_ = {};
-    bool alarm_countdown_active_ = false;
-    int alarm_countdown_initial_seconds_ = -1;
-    int alarm_countdown_last_remaining_seconds_ = -1;
+    UiMenuAiAlarmState ai_alarm_ = {};
 
     lv_obj_t* word_dictation_screen_ = nullptr;
     lv_obj_t* word_dictation_title_label_ = nullptr;
@@ -308,11 +294,8 @@ private:
     void InitializeAboutScreen();
     void InitializeWordDictationSupport();
     void DeinitializeWordDictationSupport();
-    void InitializeAlarmSupport();
-    void DeinitializeAlarmSupport();
     void InitializeSleepMusicSupport();
     void DeinitializeSleepMusicSupport();
-    void InitializeAlarmPanel();
     void InitializeSleepMusicScreen();
     void UpdateStatusBarAppearance(lv_obj_t* target_screen);
     bool ShouldUseTransparentStatusBar(lv_obj_t* target_screen);
@@ -322,13 +305,6 @@ private:
 
     void StartCameraPreview(int interval_ms);
     void StopCameraPreview();
-    void StartAlarmUiRefresh();
-    void StopAlarmUiRefresh();
-    void ResetAlarmPanelObjects();
-    void RefreshAlarmUi();
-    void ShowAlarmPanel();
-    void HideAlarmPanel();
-    bool HasValidLocalTime() const;
 
     void OnMenuOptionClicked(int option_id);
     void ReturnToMainMenu();
