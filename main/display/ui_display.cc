@@ -164,51 +164,6 @@ UiLcdDisplay::~UiLcdDisplay() {
     BleHid::GetInstance().OnConnectionStateChanged({});
 }
 
-void UiLcdDisplay::LoadScreen(lv_obj_t* target_screen) {
-    if (target_screen == nullptr) {
-        return;
-    }
-
-    lv_obj_t* previous_screen = lv_screen_active();
-    {
-        DisplayLockGuard lock(this);
-        lv_screen_load(target_screen);
-        MoveStatusBarToScreen(target_screen);
-    }
-
-    ReleaseScreenResources(previous_screen, target_screen);
-}
-
-void UiLcdDisplay::ReleaseScreenResources(lv_obj_t* previous_screen, lv_obj_t* target_screen) {
-    previous_screen = TakeValidObject(previous_screen);
-    target_screen = TakeValidObject(target_screen);
-    if (previous_screen == nullptr || previous_screen == target_screen) {
-        return;
-    }
-
-    if (previous_screen == settings_screen_) {
-        DestroySettingsScreen();
-    } else if (previous_screen == network_switch_screen_) {
-        DestroyNetworkSwitchScreen();
-    } else if (previous_screen == server_switch_screen_) {
-        DestroyServerSwitchScreen();
-    } else if (previous_screen == language_switch_screen_) {
-        DestroyLanguageSwitchScreen();
-    } else if (previous_screen == about_screen_) {
-        DestroyAboutScreen();
-    } else if (previous_screen == camera_screen_) {
-        DestroyCameraScreen();
-    } else if (previous_screen == gallery_screen_) {
-        DestroyGalleryScreen();
-    } else if (previous_screen == photo_viewer_screen_) {
-        DestroyPhotoViewerScreen();
-    } else if (previous_screen == word_dictation_screen_) {
-        DestroyWordDictationScreen();
-    } else if (previous_screen == sleep_music_screen_) {
-        DestroySleepMusicScreen();
-    }
-}
-
 void UiLcdDisplay::SetEmotion(const char* emotion) {
     if (current_dialogue_scene_option_id_ == kMagicMirrorOptionId) {
         return;
@@ -1097,18 +1052,6 @@ void UiLcdDisplay::InitializeCameraScreen() {
     CreateBackButton(camera_screen_, &camera_back_button_data_);
 }
 
-void UiLcdDisplay::DestroyCameraScreen() {
-    DisplayLockGuard lock(this);
-    if (camera_screen_ != nullptr) {
-        lv_obj_del(camera_screen_);
-        camera_screen_ = nullptr;
-    }
-    camera_mode_btn_left_ = nullptr;
-    camera_mode_btn_center_ = nullptr;
-    camera_mode_btn_right_ = nullptr;
-    camera_ble_status_label_ = nullptr;
-}
-
 void UiLcdDisplay::InitializeGallery() {
     DisplayLockGuard lock(this);
 
@@ -1128,16 +1071,6 @@ void UiLcdDisplay::InitializeGallery() {
     lv_obj_set_style_pad_all(gallery_list_, 0, 0);
     gallery_back_button_data_ = BackButtonData{this, kBackTargetCamera};
     CreateBackButton(gallery_screen_, &gallery_back_button_data_);
-}
-
-void UiLcdDisplay::DestroyGalleryScreen() {
-    DisplayLockGuard lock(this);
-    if (gallery_screen_ != nullptr) {
-        lv_obj_del(gallery_screen_);
-        gallery_screen_ = nullptr;
-    }
-    gallery_list_ = nullptr;
-    photo_files_.clear();
 }
 
 void UiLcdDisplay::InitializeAboutScreen() {
@@ -1199,20 +1132,6 @@ void UiLcdDisplay::InitializeAboutScreen() {
 
     about_back_button_data_ = BackButtonData{this, kBackTargetSettings};
     CreateBackButton(about_screen_, &about_back_button_data_);
-}
-
-void UiLcdDisplay::DestroyAboutScreen() {
-    DisplayLockGuard lock(this);
-    if (about_screen_ != nullptr) {
-        lv_obj_del(about_screen_);
-        about_screen_ = nullptr;
-    }
-
-    about_title_label_ = nullptr;
-    about_content_ = nullptr;
-    about_info_title_labels_.fill(nullptr);
-    about_info_value_labels_.fill(nullptr);
-    about_info_separator_labels_.fill(nullptr);
 }
 
 bool UiLcdDisplay::ShouldUseTransparentStatusBar(lv_obj_t* target_screen) {
@@ -1354,13 +1273,12 @@ void UiLcdDisplay::ShowAboutScreen() {
     }
 
     RefreshAboutScreenTexts();
-    {
-        DisplayLockGuard lock(this);
-        if (about_content_ != nullptr) {
-            lv_obj_scroll_to_y(about_content_, 0, LV_ANIM_OFF);
-        }
+    DisplayLockGuard lock(this);
+    if (about_content_ != nullptr) {
+        lv_obj_scroll_to_y(about_content_, 0, LV_ANIM_OFF);
     }
-    LoadScreen(about_screen_);
+    lv_screen_load(about_screen_);
+    MoveStatusBarToScreen(about_screen_);
 }
 
 void UiLcdDisplay::RefreshAboutScreenTexts() {
@@ -1450,7 +1368,9 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         ClearFeatureVisual();
         gallery_swipe_enabled_ = false;
         StopCameraPreview();
-        LoadScreen(camera_screen_);
+        DisplayLockGuard lock(this);
+        lv_screen_load(camera_screen_);
+        MoveStatusBarToScreen(camera_screen_);
         return;
     }
 
@@ -1491,7 +1411,11 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         StopCameraPreview();
         HideAlarmPanel();
         EnterDialogueScene(option_id);
-        LoadScreen(ai_screen_);
+        {
+            DisplayLockGuard lock(this);
+            lv_screen_load(ai_screen_);
+            MoveStatusBarToScreen(ai_screen_);
+        }
         return;
     }
 
@@ -1502,7 +1426,11 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         HideAlarmPanel();
     }
 
-    LoadScreen(ai_screen_);
+    {
+        DisplayLockGuard lock(this);
+        lv_screen_load(ai_screen_);
+        MoveStatusBarToScreen(ai_screen_);
+    }
 
     gallery_swipe_enabled_ = (option_id == kVisionOptionId);
     if (gallery_swipe_enabled_) {
@@ -1531,7 +1459,11 @@ void UiLcdDisplay::ReturnToMainMenu() {
     StopCameraPreview();
     HideAlarmPanel();
     ClearFeatureVisual();
-    LoadScreen(menu_screen_);
+    {
+        DisplayLockGuard lock(this);
+        lv_screen_load(menu_screen_);
+        MoveStatusBarToScreen(menu_screen_);
+    }
 }
 
 void UiLcdDisplay::ReturnToCameraScreen() {
@@ -1539,7 +1471,11 @@ void UiLcdDisplay::ReturnToCameraScreen() {
     SetPreviewPresentationMode(PreviewPresentationMode::kOverlay);
     HideAlarmPanel();
     ApplyFeatureVisual(kVisionOptionId);
-    LoadScreen(ai_screen_);
+    {
+        DisplayLockGuard lock(this);
+        lv_screen_load(ai_screen_);
+        MoveStatusBarToScreen(ai_screen_);
+    }
     StartCameraPreview(200);
 }
 
@@ -1656,7 +1592,9 @@ void UiLcdDisplay::ShowGallery() {
     }
 
     RefreshGalleryList();
-    LoadScreen(gallery_screen_);
+    DisplayLockGuard lock(this);
+    lv_screen_load(gallery_screen_);
+    MoveStatusBarToScreen(gallery_screen_);
 }
 
 void UiLcdDisplay::RefreshGalleryList() {
@@ -1720,47 +1658,35 @@ void UiLcdDisplay::RefreshGalleryList() {
 }
 
 void UiLcdDisplay::ShowPhotoViewer(const char* filename) {
-    {
-        DisplayLockGuard lock(this);
-        if (photo_viewer_screen_ == nullptr) {
-            photo_viewer_screen_ = lv_obj_create(nullptr);
-            lv_obj_set_style_bg_color(photo_viewer_screen_, lv_color_black(), 0);
-            lv_obj_set_style_border_width(photo_viewer_screen_, 0, 0);
-            lv_obj_set_style_pad_all(photo_viewer_screen_, 0, 0);
-            photo_viewer_container_ = lv_obj_create(photo_viewer_screen_);
-            lv_obj_set_size(photo_viewer_container_, LV_HOR_RES, LV_VER_RES);
-            lv_obj_set_style_bg_color(photo_viewer_container_, lv_color_black(), 0);
-            lv_obj_set_style_border_width(photo_viewer_container_, 0, 0);
-            lv_obj_set_style_pad_all(photo_viewer_container_, 0, 0);
-            photo_viewer_back_button_data_ = BackButtonData{this, kBackTargetGallery};
-            CreateBackButton(photo_viewer_screen_, &photo_viewer_back_button_data_, true);
-        }
+    DisplayLockGuard lock(this);
 
-        current_photo_image_.reset();
-        current_photo_img_ = nullptr;
-
-        lv_obj_clean(photo_viewer_container_);
-        current_photo_img_ = lv_image_create(photo_viewer_container_);
-        lv_obj_align(current_photo_img_, LV_ALIGN_CENTER, 0, 0);
+    if (photo_viewer_screen_ == nullptr) {
+        photo_viewer_screen_ = lv_obj_create(nullptr);
+        lv_obj_set_style_bg_color(photo_viewer_screen_, lv_color_black(), 0);
+        lv_obj_set_style_border_width(photo_viewer_screen_, 0, 0);
+        lv_obj_set_style_pad_all(photo_viewer_screen_, 0, 0);
+        photo_viewer_container_ = lv_obj_create(photo_viewer_screen_);
+        lv_obj_set_size(photo_viewer_container_, LV_HOR_RES, LV_VER_RES);
+        lv_obj_set_style_bg_color(photo_viewer_container_, lv_color_black(), 0);
+        lv_obj_set_style_border_width(photo_viewer_container_, 0, 0);
+        lv_obj_set_style_pad_all(photo_viewer_container_, 0, 0);
+        photo_viewer_back_button_data_ = BackButtonData{this, kBackTargetGallery};
+        CreateBackButton(photo_viewer_screen_, &photo_viewer_back_button_data_, true);
     }
+
+    current_photo_image_.reset();
+    current_photo_img_ = nullptr;
+
+    lv_obj_clean(photo_viewer_container_);
+    current_photo_img_ = lv_image_create(photo_viewer_container_);
+    lv_obj_align(current_photo_img_, LV_ALIGN_CENTER, 0, 0);
 
     char filepath[128];
     snprintf(filepath, sizeof(filepath), "/storage/%s", filename);
     LoadRawImage(current_photo_img_, filepath);
 
-    LoadScreen(photo_viewer_screen_);
-}
-
-void UiLcdDisplay::DestroyPhotoViewerScreen() {
-    current_photo_image_.reset();
-    current_photo_img_ = nullptr;
-
-    DisplayLockGuard lock(this);
-    if (photo_viewer_screen_ != nullptr) {
-        lv_obj_del(photo_viewer_screen_);
-        photo_viewer_screen_ = nullptr;
-    }
-    photo_viewer_container_ = nullptr;
+    lv_screen_load(photo_viewer_screen_);
+    MoveStatusBarToScreen(photo_viewer_screen_);
 }
 
 void UiLcdDisplay::ShowDeleteConfirmDialog(const char* filename) {
