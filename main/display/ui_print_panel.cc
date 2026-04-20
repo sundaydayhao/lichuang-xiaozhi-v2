@@ -1,4 +1,4 @@
-#include "ui_print_page.h"
+#include "ui_print_panel.h"
 
 #include "application.h"
 #include "board.h"

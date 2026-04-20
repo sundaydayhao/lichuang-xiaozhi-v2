@@ -3,14 +3,6 @@
 
 #include "lcd_display.h"
 #include "device_state.h"
-#include "ui_alarm_page.h"
-#include "ui_camera_page.h"
-#include "ui_gallery_page.h"
-#include "ui_menu_page.h"
-#include "ui_photo_viewer_page.h"
-#include "ui_settings_page.h"
-#include "ui_sleep_music_page.h"
-#include "ui_word_dictation_page.h"
 
 #include <array>
 #include <cstdint>
@@ -23,19 +15,7 @@
 #include <vector>
 
 class UiPrintPanel;
-class UiLcdDisplay : public SpiLcdDisplay,
-                     private UiDisplayMenuPage,
-                     private UiDisplaySettingsPage,
-                     private UiDisplayNetworkSwitchPage,
-                     private UiDisplayServerSwitchPage,
-                     private UiDisplayLanguageSwitchPage,
-                     private UiDisplayAboutPage,
-                     private UiDisplayCameraPage,
-                     private UiDisplayGalleryPage,
-                     private UiDisplayPhotoViewerPage,
-                     private UiAlarmPanelPage,
-                     private UiWordDictationPage,
-                     private UiSleepMusicPage {
+class UiLcdDisplay : public SpiLcdDisplay {
 public:
     static constexpr size_t kMenuItemCount = 12;
     static constexpr size_t kSettingsItemCount = 4;
@@ -63,10 +43,196 @@ private:
         kPhoto = 0,
         kVideo = 1,
     };
+
+    struct MenuButtonData {
+        UiLcdDisplay* display = nullptr;
+        int option_id = 0;
+        lv_point_t press_point = {0, 0};
+        bool moved = false;
+    };
+
+    struct SettingsItemData {
+        UiLcdDisplay* display = nullptr;
+        int item_id = 0;
+    };
+
+    struct BackButtonData {
+        UiLcdDisplay* display = nullptr;
+        int target = 0;
+    };
+
+    struct NetworkSwitchOptionData {
+        UiLcdDisplay* display = nullptr;
+        int option_id = 0;
+    };
+
+    struct ServerSwitchOptionData {
+        UiLcdDisplay* display = nullptr;
+        int option_id = 0;
+    };
+
+    struct LanguageSwitchOptionData {
+        UiLcdDisplay* display = nullptr;
+        int option_id = 0;
+    };
+
+    struct WordDictationWord {
+        std::string text;
+        std::string note;
+        bool selected = true;
+    };
+
+    struct WordDictationStage {
+        std::string name;
+        std::vector<WordDictationWord> words;
+    };
+
+    struct WordDictationTextbook {
+        std::string category;
+        std::string grade;
+        std::string version;
+        std::string subtitle;
+        std::string cover_title;
+        uint32_t cover_color = 0;
+        std::vector<WordDictationStage> stages;
+    };
+
+    struct WordDictationListItemData {
+        UiLcdDisplay* display = nullptr;
+        int index = 0;
+    };
+
+    struct WordDictationActionData {
+        UiLcdDisplay* display = nullptr;
+        int action = 0;
+    };
+
+    struct SleepMusicOptionData {
+        UiLcdDisplay* display = nullptr;
+        int index = 0;
+    };
+
+    struct WordDictationSettings {
+        bool random_order = false;
+        int interval_seconds = 10;
+        int repeat_count = 1;
+        bool bilingual_mode = false;
+    };
+
+    enum class WordDictationView {
+        kHidden = 0,
+        kTextbooks,
+        kStages,
+        kWords,
+        kSummary,
+        kSettings,
+        kCountdown,
+        kRunning,
+    };
+
+    lv_obj_t* ai_screen_ = nullptr;
+    lv_obj_t* ai_back_button_ = nullptr;
+    lv_obj_t* vision_ai_badge_ = nullptr;
+    lv_obj_t* feature_background_image_ = nullptr;
+    lv_obj_t* feature_overlay_label_ = nullptr;
+    lv_obj_t* magic_mirror_intro_container_ = nullptr;
+    lv_obj_t* magic_mirror_intro_emoji_ = nullptr;
+    lv_obj_t* magic_mirror_intro_text_ = nullptr;
+    lv_obj_t* ai_print_message_label_ = nullptr;
+    lv_obj_t* menu_screen_ = nullptr;
+    lv_obj_t* menu_page_container_ = nullptr;
+    lv_obj_t* menu_page1_ = nullptr;
+    lv_obj_t* menu_page2_ = nullptr;
+    std::array<lv_obj_t*, kMenuItemCount> menu_buttons_ = {};
+    std::array<lv_obj_t*, kMenuItemCount> menu_button_icon_images_ = {};
+    std::array<lv_obj_t*, kMenuItemCount> menu_button_labels_ = {};
+    std::array<MenuButtonData, kMenuItemCount> menu_button_data_ = {};
+
+    lv_obj_t* settings_screen_ = nullptr;
+    lv_obj_t* settings_title_label_ = nullptr;
+    std::array<lv_obj_t*, kSettingsItemCount> settings_item_name_labels_ = {};
+    std::array<SettingsItemData, kSettingsItemCount> settings_item_data_ = {};
+    BackButtonData settings_back_button_data_ = {};
+
+    lv_obj_t* network_switch_screen_ = nullptr;
+    lv_obj_t* network_switch_title_label_ = nullptr;
+    lv_obj_t* network_switch_hint_label_ = nullptr;
+    std::array<lv_obj_t*, kNetworkSwitchOptionCount> network_switch_option_buttons_ = {};
+    std::array<lv_obj_t*, kNetworkSwitchOptionCount> network_switch_option_labels_ = {};
+    std::array<lv_obj_t*, kNetworkSwitchOptionCount> network_switch_option_state_labels_ = {};
+    std::array<NetworkSwitchOptionData, kNetworkSwitchOptionCount> network_switch_option_data_ = {};
+    BackButtonData network_switch_back_button_data_ = {};
+
+    lv_obj_t* server_switch_screen_ = nullptr;
+    lv_obj_t* server_switch_title_label_ = nullptr;
+    std::array<lv_obj_t*, kServerSwitchOptionCount> server_switch_option_buttons_ = {};
+    std::array<lv_obj_t*, kServerSwitchOptionCount> server_switch_option_labels_ = {};
+    std::array<lv_obj_t*, kServerSwitchOptionCount> server_switch_option_state_labels_ = {};
+    std::array<ServerSwitchOptionData, kServerSwitchOptionCount> server_switch_option_data_ = {};
+    BackButtonData server_switch_back_button_data_ = {};
+
+    lv_obj_t* language_switch_screen_ = nullptr;
+    lv_obj_t* language_switch_title_label_ = nullptr;
+    std::array<lv_obj_t*, kLanguageSwitchOptionCount> language_switch_option_buttons_ = {};
+    std::array<lv_obj_t*, kLanguageSwitchOptionCount> language_switch_option_labels_ = {};
+    std::array<lv_obj_t*, kLanguageSwitchOptionCount> language_switch_option_state_labels_ = {};
+    std::array<LanguageSwitchOptionData, kLanguageSwitchOptionCount> language_switch_option_data_ = {};
+    BackButtonData language_switch_back_button_data_ = {};
+
+    lv_obj_t* about_screen_ = nullptr;
+    lv_obj_t* about_title_label_ = nullptr;
+    lv_obj_t* about_content_ = nullptr;
+    std::array<lv_obj_t*, kAboutInfoItemCount> about_info_title_labels_ = {};
+    std::array<lv_obj_t*, kAboutInfoItemCount> about_info_value_labels_ = {};
+    std::array<lv_obj_t*, kAboutInfoItemCount> about_info_separator_labels_ = {};
+    BackButtonData about_back_button_data_ = {};
+    BackButtonData ai_back_button_data_ = {};
+    BackButtonData camera_back_button_data_ = {};
+    BackButtonData gallery_back_button_data_ = {};
+    BackButtonData photo_viewer_back_button_data_ = {};
+    BackButtonData word_dictation_back_button_data_ = {};
+    BackButtonData sleep_music_back_button_data_ = {};
+
+    lv_obj_t* camera_screen_ = nullptr;
+    lv_obj_t* camera_mode_btn_left_ = nullptr;
+    lv_obj_t* camera_mode_btn_center_ = nullptr;
+    lv_obj_t* camera_mode_btn_right_ = nullptr;
+    lv_obj_t* camera_ble_status_label_ = nullptr;
     CameraMode current_camera_mode_ = CameraMode::kPhoto;
     bool is_recording_ = false;
+
+    lv_obj_t* gallery_screen_ = nullptr;
+    lv_obj_t* gallery_list_ = nullptr;
+    lv_obj_t* photo_viewer_screen_ = nullptr;
+    lv_obj_t* photo_viewer_container_ = nullptr;
+    lv_obj_t* current_photo_img_ = nullptr;
+    std::unique_ptr<LvglImage> current_photo_image_;
+    std::vector<std::string> photo_files_;
     std::map<std::string, std::shared_ptr<LvglImage>> asset_image_cache_;
     esp_timer_handle_t alarm_ui_timer_ = nullptr;
+    lv_obj_t* alarm_panel_ = nullptr;
+    lv_obj_t* alarm_subtitle_label_ = nullptr;
+    lv_obj_t* alarm_now_time_label_ = nullptr;
+    lv_obj_t* alarm_date_label_ = nullptr;
+    lv_obj_t* alarm_hint_label_ = nullptr;
+    lv_obj_t* alarm_next_icon_label_ = nullptr;
+    lv_obj_t* alarm_next_time_label_ = nullptr;
+    lv_obj_t* alarm_ring_frame_ = nullptr;
+    lv_obj_t* alarm_ring_inner_ = nullptr;
+    lv_obj_t* alarm_clock_time_label_ = nullptr;
+    lv_obj_t* alarm_countdown_label_ = nullptr;
+    lv_obj_t* alarm_hourglass_label_ = nullptr;
+    std::array<lv_obj_t*, 24> alarm_ring_segments_ = {};
+    bool alarm_countdown_active_ = false;
+    int alarm_countdown_initial_seconds_ = -1;
+    int alarm_countdown_last_remaining_seconds_ = -1;
+
+    lv_obj_t* word_dictation_screen_ = nullptr;
+    lv_obj_t* word_dictation_title_label_ = nullptr;
+    lv_obj_t* word_dictation_content_ = nullptr;
+    lv_obj_t* word_dictation_back_button_ = nullptr;
+    lv_obj_t* word_dictation_running_count_label_ = nullptr;
+    lv_obj_t* word_dictation_running_hint_label_ = nullptr;
 
     bool gallery_swipe_enabled_ = false;
     int current_feature_option_id_ = 0;
@@ -79,9 +245,36 @@ private:
     int64_t dialogue_scene_deadline_us_ = 0;
     bool dialogue_scene_prompt_captured_ = false;
     esp_timer_handle_t dialogue_scene_timer_ = nullptr;
+    WordDictationView word_dictation_view_ = WordDictationView::kHidden;
+    WordDictationSettings word_dictation_settings_ = {};
+    std::vector<WordDictationTextbook> word_dictation_textbooks_;
+    std::vector<WordDictationListItemData> word_dictation_list_item_data_;
+    std::vector<WordDictationActionData> word_dictation_action_data_;
+    std::vector<int> word_dictation_play_order_;
+    int word_dictation_selected_textbook_index_ = -1;
+    int word_dictation_selected_stage_index_ = -1;
+    int word_dictation_countdown_value_ = 3;
+    size_t word_dictation_current_play_index_ = 0;
     esp_timer_handle_t word_dictation_countdown_timer_ = nullptr;
     esp_timer_handle_t word_dictation_progress_timer_ = nullptr;
     esp_timer_handle_t sleep_music_timer_ = nullptr;
+    lv_obj_t* sleep_music_screen_ = nullptr;
+    lv_obj_t* sleep_music_title_label_ = nullptr;
+    lv_obj_t* sleep_music_status_label_ = nullptr;
+    std::array<lv_obj_t*, 3> sleep_music_mode_buttons_ = {};
+    std::array<lv_obj_t*, 3> sleep_music_mode_labels_ = {};
+    std::array<SleepMusicOptionData, 3> sleep_music_mode_button_data_ = {};
+    std::array<lv_obj_t*, 3> sleep_music_duration_buttons_ = {};
+    std::array<lv_obj_t*, 3> sleep_music_duration_labels_ = {};
+    std::array<SleepMusicOptionData, 3> sleep_music_duration_button_data_ = {};
+    lv_obj_t* sleep_music_countdown_label_ = nullptr;
+    lv_obj_t* sleep_music_action_button_ = nullptr;
+    lv_obj_t* sleep_music_action_label_ = nullptr;
+    int sleep_music_selected_mode_index_ = 0;
+    int sleep_music_selected_duration_index_ = 0;
+    bool sleep_music_playing_ = false;
+    int sleep_music_remaining_seconds_ = 0;
+    uint32_t sleep_music_noise_seed_ = 0x13572468u;
 
     void InitializeMainMenu();
     void LoadScreen(lv_obj_t* target_screen);
@@ -234,6 +427,12 @@ private:
     void LoadRawImage(lv_obj_t* img_obj, const char* filepath);
 
     static void OnMenuButtonClicked(lv_event_t* e);
+    static void OnAiScreenGesture(lv_event_t* e);
+    static void OnCameraScreenGesture(lv_event_t* e);
+    static void OnGalleryScreenGesture(lv_event_t* e);
+    static void OnPhotoViewerGesture(lv_event_t* e);
+    static void OnSettingsScreenGesture(lv_event_t* e);
+    static void OnAboutScreenGesture(lv_event_t* e);
     static void OnCameraModeButtonClicked(lv_event_t* e);
     static void OnCameraActionButtonClicked(lv_event_t* e);
     static void OnSettingsItemClicked(lv_event_t* e);
