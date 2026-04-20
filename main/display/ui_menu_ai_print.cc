@@ -367,7 +367,7 @@ const char* UiMenuAiPrint::GetMenuIconAssetName() {
 }
 
 std::string UiMenuAiPrint::BuildScenePayload(const UiLcdDisplay& display) {
-    const std::string language = display.GetSelectedLanguageCode();
+    const std::string language = UiMenuSetting::GetSelectedLanguageCode();
     const std::string instructions =
         "You are an AI photo print assistant for children. "
         "Always reply in the current reply_language. "

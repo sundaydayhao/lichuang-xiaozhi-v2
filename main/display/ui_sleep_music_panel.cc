@@ -278,7 +278,7 @@ void UiLcdDisplay::InitializeSleepMusicScreen() {
     lv_obj_set_style_text_font(sleep_music_action_label_, lvgl_theme->text_font()->font(), 0);
     lv_obj_center(sleep_music_action_label_);
 
-    sleep_music_back_button_data_ = BackButtonData{this, 0};
+    sleep_music_back_button_data_ = UiBackButtonData{this, 0};
     CreateBackButton(sleep_music_screen_, &sleep_music_back_button_data_);
     RefreshSleepMusicScreen();
 }

@@ -4,6 +4,7 @@
 #include "lcd_display.h"
 #include "ui_menu_ai_alarm.h"
 #include "ui_menu_ai_print.h"
+#include "ui_menu_setting.h"
 #include "device_state.h"
 
 #include <array>
@@ -19,11 +20,6 @@
 class UiLcdDisplay : public SpiLcdDisplay {
 public:
     static constexpr size_t kMenuItemCount = 12;
-    static constexpr size_t kSettingsItemCount = 4;
-    static constexpr size_t kNetworkSwitchOptionCount = 2;
-    static constexpr size_t kServerSwitchOptionCount = 2;
-    static constexpr size_t kLanguageSwitchOptionCount = 3;
-    static constexpr size_t kAboutInfoItemCount = 7;
     static constexpr size_t kCameraDirectionButtonCount = 4;
     static constexpr size_t kCameraControlCount = 6;
 
@@ -52,6 +48,7 @@ public:
 private:
     friend class UiMenuAiPrint;
     friend class UiMenuAiAlarm;
+    friend class UiMenuSetting;
 
     struct MenuButtonData {
         UiLcdDisplay* display = nullptr;
@@ -60,34 +57,9 @@ private:
         bool moved = false;
     };
 
-    struct SettingsItemData {
-        UiLcdDisplay* display = nullptr;
-        int item_id = 0;
-    };
-
-    struct BackButtonData {
-        UiLcdDisplay* display = nullptr;
-        int target = 0;
-    };
-
     struct CameraControlData {
         UiLcdDisplay* display = nullptr;
         RemoteSelfieAction action = RemoteSelfieAction::kSwipeUp;
-    };
-
-    struct NetworkSwitchOptionData {
-        UiLcdDisplay* display = nullptr;
-        int option_id = 0;
-    };
-
-    struct ServerSwitchOptionData {
-        UiLcdDisplay* display = nullptr;
-        int option_id = 0;
-    };
-
-    struct LanguageSwitchOptionData {
-        UiLcdDisplay* display = nullptr;
-        int option_id = 0;
     };
 
     struct WordDictationWord {
@@ -163,50 +135,13 @@ private:
     std::array<lv_obj_t*, kMenuItemCount> menu_button_labels_ = {};
     std::array<MenuButtonData, kMenuItemCount> menu_button_data_ = {};
 
-    lv_obj_t* settings_screen_ = nullptr;
-    lv_obj_t* settings_title_label_ = nullptr;
-    std::array<lv_obj_t*, kSettingsItemCount> settings_item_name_labels_ = {};
-    std::array<SettingsItemData, kSettingsItemCount> settings_item_data_ = {};
-    BackButtonData settings_back_button_data_ = {};
-
-    lv_obj_t* network_switch_screen_ = nullptr;
-    lv_obj_t* network_switch_title_label_ = nullptr;
-    lv_obj_t* network_switch_hint_label_ = nullptr;
-    std::array<lv_obj_t*, kNetworkSwitchOptionCount> network_switch_option_buttons_ = {};
-    std::array<lv_obj_t*, kNetworkSwitchOptionCount> network_switch_option_labels_ = {};
-    std::array<lv_obj_t*, kNetworkSwitchOptionCount> network_switch_option_state_labels_ = {};
-    std::array<NetworkSwitchOptionData, kNetworkSwitchOptionCount> network_switch_option_data_ = {};
-    BackButtonData network_switch_back_button_data_ = {};
-
-    lv_obj_t* server_switch_screen_ = nullptr;
-    lv_obj_t* server_switch_title_label_ = nullptr;
-    std::array<lv_obj_t*, kServerSwitchOptionCount> server_switch_option_buttons_ = {};
-    std::array<lv_obj_t*, kServerSwitchOptionCount> server_switch_option_labels_ = {};
-    std::array<lv_obj_t*, kServerSwitchOptionCount> server_switch_option_state_labels_ = {};
-    std::array<ServerSwitchOptionData, kServerSwitchOptionCount> server_switch_option_data_ = {};
-    BackButtonData server_switch_back_button_data_ = {};
-
-    lv_obj_t* language_switch_screen_ = nullptr;
-    lv_obj_t* language_switch_title_label_ = nullptr;
-    std::array<lv_obj_t*, kLanguageSwitchOptionCount> language_switch_option_buttons_ = {};
-    std::array<lv_obj_t*, kLanguageSwitchOptionCount> language_switch_option_labels_ = {};
-    std::array<lv_obj_t*, kLanguageSwitchOptionCount> language_switch_option_state_labels_ = {};
-    std::array<LanguageSwitchOptionData, kLanguageSwitchOptionCount> language_switch_option_data_ = {};
-    BackButtonData language_switch_back_button_data_ = {};
-
-    lv_obj_t* about_screen_ = nullptr;
-    lv_obj_t* about_title_label_ = nullptr;
-    lv_obj_t* about_content_ = nullptr;
-    std::array<lv_obj_t*, kAboutInfoItemCount> about_info_title_labels_ = {};
-    std::array<lv_obj_t*, kAboutInfoItemCount> about_info_value_labels_ = {};
-    std::array<lv_obj_t*, kAboutInfoItemCount> about_info_separator_labels_ = {};
-    BackButtonData about_back_button_data_ = {};
-    BackButtonData ai_back_button_data_ = {};
-    BackButtonData camera_back_button_data_ = {};
-    BackButtonData gallery_back_button_data_ = {};
-    BackButtonData photo_viewer_back_button_data_ = {};
-    BackButtonData word_dictation_back_button_data_ = {};
-    BackButtonData sleep_music_back_button_data_ = {};
+    UiMenuSettingState menu_setting_ = {};
+    UiBackButtonData ai_back_button_data_ = {};
+    UiBackButtonData camera_back_button_data_ = {};
+    UiBackButtonData gallery_back_button_data_ = {};
+    UiBackButtonData photo_viewer_back_button_data_ = {};
+    UiBackButtonData word_dictation_back_button_data_ = {};
+    UiBackButtonData sleep_music_back_button_data_ = {};
 
     lv_obj_t* camera_screen_ = nullptr;
     lv_obj_t* camera_card_ = nullptr;
@@ -285,11 +220,6 @@ private:
     void InitializeMainMenu();
     void InitializeCameraScreen();
     void InitializeGallery();
-    void InitializeSettingsScreen();
-    void InitializeNetworkSwitchScreen();
-    void InitializeServerSwitchScreen();
-    void InitializeLanguageSwitchScreen();
-    void InitializeAboutScreen();
     void InitializeWordDictationSupport();
     void DeinitializeWordDictationSupport();
     void InitializeSleepMusicSupport();
@@ -299,7 +229,7 @@ private:
     bool ShouldUseTransparentStatusBar(lv_obj_t* target_screen);
     void MoveStatusBarToScreen(lv_obj_t* target_screen);
     void RefreshAiContentLayout(lv_coord_t top_padding);
-    lv_obj_t* CreateBackButton(lv_obj_t* parent, BackButtonData* data, bool dark_surface = false);
+    lv_obj_t* CreateBackButton(lv_obj_t* parent, UiBackButtonData* data, bool dark_surface = false);
 
     void StartCameraPreview(int interval_ms);
     void StopCameraPreview();
@@ -307,11 +237,6 @@ private:
     void OnMenuOptionClicked(int option_id);
     void ReturnToMainMenu();
     void ReturnToCameraScreen();
-    void ShowSettingsScreen();
-    void ShowNetworkSwitchScreen();
-    void ShowServerSwitchScreen();
-    void ShowLanguageSwitchScreen();
-    void ShowAboutScreen();
     bool HandleRemoteSelfieSpeechRecognized(const std::string& text);
     bool ExecuteRemoteSelfieSpeechAction(RemoteSelfieAction action, const char* success_notification);
     void RefreshRemoteSelfieSceneContext();
@@ -375,31 +300,6 @@ private:
     void RunVisionRecognitionTask(const std::string& question);
     void UpdateVisionAiBadgeVisibility();
     void RefreshMenuIconImages();
-    const char* GetSettingsTitle() const;
-    const char* GetSettingsItemName(int index) const;
-    const char* GetNetworkSwitchOptionName(int index) const;
-    const char* GetServerSwitchOptionName(int index) const;
-    const char* GetLanguageSwitchOptionName(int index) const;
-    const char* GetAboutTitle() const;
-    const char* GetAboutInfoTitle(int index) const;
-    void RefreshNetworkSwitchScreen();
-    int GetCurrentNetworkSwitchOptionIndex() const;
-    void SelectNetworkSwitchOption(int index);
-    void RefreshServerSwitchScreen();
-    int GetCurrentServerSwitchOptionIndex() const;
-    void SelectServerSwitchOption(int index);
-    void RefreshLanguageSwitchScreen();
-    int GetCurrentLanguageSwitchOptionIndex() const;
-    void SelectLanguageSwitchOption(int index);
-    std::string GetSelectedLanguageCode() const;
-    void RefreshAboutScreenTexts();
-    std::string GetFirmwareVersionForDisplay() const;
-    std::string GetActivationCodeForDisplay() const;
-    std::string GetServerAddressForDisplay() const;
-    std::string GetWifiMacAddressForDisplay() const;
-    std::string Get4gImeiForDisplay() const;
-    std::string GetIpAddressForDisplay() const;
-    std::string GetUuidForDisplay() const;
     std::string BuildVisionScenePayload() const;
     std::string BuildRemoteSelfieScenePayload() const;
     std::string BuildDialogueScenePayload(int option_id) const;
@@ -422,16 +322,10 @@ private:
     static void OnCameraScreenGesture(lv_event_t* e);
     static void OnGalleryScreenGesture(lv_event_t* e);
     static void OnPhotoViewerGesture(lv_event_t* e);
-    static void OnSettingsScreenGesture(lv_event_t* e);
-    static void OnAboutScreenGesture(lv_event_t* e);
     static void OnCameraControlButtonClicked(lv_event_t* e);
     static void OnCameraDirectionButtonDraw(lv_event_t* e);
     static void OnCameraActionButtonClicked(lv_event_t* e);
     static void OnCameraBleStatusAsync(void* user_data);
-    static void OnSettingsItemClicked(lv_event_t* e);
-    static void OnNetworkSwitchOptionClicked(lv_event_t* e);
-    static void OnServerSwitchOptionClicked(lv_event_t* e);
-    static void OnLanguageSwitchOptionClicked(lv_event_t* e);
     static void OnBackButtonClicked(lv_event_t* e);
     static void OnWordDictationListItemClicked(lv_event_t* e);
     static void OnWordDictationActionClicked(lv_event_t* e);

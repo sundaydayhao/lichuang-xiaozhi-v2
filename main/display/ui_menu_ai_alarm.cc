@@ -601,7 +601,7 @@ bool UiMenuAiAlarm::IsPanelVisible(UiLcdDisplay& display) {
 }
 
 std::string UiMenuAiAlarm::BuildScenePayload(const UiLcdDisplay& display) {
-    const std::string language = display.GetSelectedLanguageCode();
+    const std::string language = UiMenuSetting::GetSelectedLanguageCode();
     const std::string instructions =
         "You are an AI alarm assistant. "
         "Always reply in the current reply_language. "

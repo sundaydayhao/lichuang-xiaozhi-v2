@@ -7,14 +7,9 @@
 #include "board.h"
 #include "esp32_camera.h"
 #include "lvgl_theme.h"
-#include "settings.h"
-#include "system_info.h"
-#include "assets/lang_config.h"
 #include "widgets/list/lv_list.h"
 
 #include <cJSON.h>
-#include <at_modem.h>
-#include <esp_app_desc.h>
 #include <esp_err.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
@@ -22,7 +17,6 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/idf_additions.h>
 #include <freertos/task.h>
-#include <wifi_station.h>
 
 #include <algorithm>
 #include <cctype>
@@ -397,7 +391,7 @@ bool UiLcdDisplay::IsVisionFeatureActive() const {
 }
 
 std::string UiLcdDisplay::BuildVisionScenePayload() const {
-    const std::string language = GetSelectedLanguageCode();
+    const std::string language = UiMenuSetting::GetSelectedLanguageCode();
     const std::string instructions =
         "You are a camera vision assistant for children. "
         "Always reply in the current reply_language. "
@@ -418,7 +412,7 @@ std::string UiLcdDisplay::BuildVisionScenePayload() const {
 }
 
 std::string UiLcdDisplay::BuildRemoteSelfieScenePayload() const {
-    const std::string language = GetSelectedLanguageCode();
+    const std::string language = UiMenuSetting::GetSelectedLanguageCode();
     const bool bluetooth_connected = BleHid::GetInstance().IsConnected();
     std::string instructions =
         "You are a remote selfie assistant for controlling a phone camera over Bluetooth HID. "
@@ -464,7 +458,7 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
     const char* scene = nullptr;
     const char* mode = nullptr;
     std::string instructions;
-    std::string language = GetSelectedLanguageCode();
+    std::string language = UiMenuSetting::GetSelectedLanguageCode();
 
     switch (option_id) {
     case kAiAlarmOptionId:
@@ -538,73 +532,6 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
         << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
     return oss.str();
 }
-
-const char* UiLcdDisplay::GetAboutTitle() const {
-    return "关于本机";
-}
-
-const char* UiLcdDisplay::GetAboutInfoTitle(int index) const {
-    static const char* kTexts[kAboutInfoItemCount] = {
-        "固件版本",
-        "绑定验证码",
-        "服务器地址",
-        "WiFi MAC",
-        "4G IMEI",
-        "IP地址",
-        "UUID",
-    };
-    return (index >= 0 && index < static_cast<int>(kAboutInfoItemCount)) ? kTexts[index] : "";
-}
-
-std::string UiLcdDisplay::GetFirmwareVersionForDisplay() const {
-    const esp_app_desc_t* app_desc = esp_app_get_description();
-    if (app_desc == nullptr || app_desc->version[0] == '\0') {
-        return "unknown";
-    }
-    return app_desc->version;
-}
-
-std::string UiLcdDisplay::GetActivationCodeForDisplay() const {
-    return "暂无";
-}
-
-std::string UiLcdDisplay::GetServerAddressForDisplay() const {
-    Settings wifi_settings("wifi", false);
-    std::string url = wifi_settings.GetString("ota_url");
-    if (!url.empty()) {
-        return url;
-    }
-
-    Settings websocket_settings("websocket", false);
-    url = websocket_settings.GetString("url");
-    return url.empty() ? "未配置" : url;
-}
-
-std::string UiLcdDisplay::GetWifiMacAddressForDisplay() const {
-    std::string mac = SystemInfo::GetMacAddress();
-    return mac.empty() ? "unknown" : mac;
-}
-
-std::string UiLcdDisplay::Get4gImeiForDisplay() const {
-    auto* modem = dynamic_cast<AtModem*>(Board::GetInstance().GetNetwork());
-    if (modem == nullptr) {
-        return "未配置";
-    }
-
-    std::string imei = modem->GetImei();
-    return imei.empty() ? "未配置" : imei;
-}
-
-std::string UiLcdDisplay::GetIpAddressForDisplay() const {
-    const std::string& ip = WifiStation::GetInstance().GetIpAddress();
-    return ip.empty() ? "未配置" : ip;
-}
-
-std::string UiLcdDisplay::GetUuidForDisplay() const {
-    std::string uuid = Board::GetInstance().GetUuid();
-    return uuid.empty() ? "unknown" : uuid;
-}
-
 
 const lv_image_dsc_t* UiLcdDisplay::LoadAssetImage(const char* asset_name) {
     if (asset_name == nullptr || asset_name[0] == '\0') {
@@ -1295,7 +1222,7 @@ void UiLcdDisplay::InitializeMainMenu() {
 
     MoveStatusBarToScreen(menu_screen_);
     UiMenuAiAlarm::InitializePanel(*this);
-    ai_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
+    ai_back_button_data_ = UiBackButtonData{this, kBackTargetMainMenu};
     ai_back_button_ = CreateBackButton(ai_screen_, &ai_back_button_data_);
     UpdateVisionAiBadgeVisibility();
     lv_screen_load(menu_screen_);
@@ -1454,7 +1381,7 @@ void UiLcdDisplay::InitializeCameraScreen() {
     lv_obj_set_style_text_font(camera_ble_status_label_, lvgl_theme->text_font()->font(), 0);
     lv_label_set_text(camera_ble_status_label_, "");
 
-    camera_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
+    camera_back_button_data_ = UiBackButtonData{this, kBackTargetMainMenu};
     CreateBackButton(camera_screen_, &camera_back_button_data_);
     camera_ble_connected_ = false;
     lv_label_set_text(camera_ble_status_label_, "请连接蓝牙Xiaozhi-HID");
@@ -1478,69 +1405,8 @@ void UiLcdDisplay::InitializeGallery() {
     lv_obj_set_style_bg_color(gallery_list_, lv_color_white(), 0);
     lv_obj_set_style_border_width(gallery_list_, 0, 0);
     lv_obj_set_style_pad_all(gallery_list_, 0, 0);
-    gallery_back_button_data_ = BackButtonData{this, kBackTargetCamera};
+    gallery_back_button_data_ = UiBackButtonData{this, kBackTargetCamera};
     CreateBackButton(gallery_screen_, &gallery_back_button_data_);
-}
-
-void UiLcdDisplay::InitializeAboutScreen() {
-    DisplayLockGuard lock(this);
-
-    if (about_screen_ != nullptr) {
-        return;
-    }
-
-    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
-
-    about_screen_ = lv_obj_create(nullptr);
-    lv_obj_set_style_bg_color(about_screen_, lv_color_white(), 0);
-    lv_obj_set_style_border_width(about_screen_, 0, 0);
-    lv_obj_set_style_pad_all(about_screen_, 0, 0);
-    lv_obj_set_scrollbar_mode(about_screen_, LV_SCROLLBAR_MODE_OFF);
-
-    about_title_label_ = lv_label_create(about_screen_);
-    lv_label_set_text(about_title_label_, GetAboutTitle());
-    lv_obj_align(about_title_label_, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_set_style_text_font(about_title_label_, lvgl_theme->text_font()->font(), 0);
-    lv_obj_set_style_text_color(about_title_label_, lv_color_black(), 0);
-
-    about_content_ = lv_obj_create(about_screen_);
-    lv_obj_set_size(about_content_, LV_HOR_RES, LV_VER_RES - 84);
-    lv_obj_align(about_content_, LV_ALIGN_TOP_MID, 0, 84);
-    lv_obj_set_style_bg_color(about_content_, lv_color_white(), 0);
-    lv_obj_set_style_border_width(about_content_, 0, 0);
-    lv_obj_set_style_pad_left(about_content_, 16, 0);
-    lv_obj_set_style_pad_right(about_content_, 16, 0);
-    lv_obj_set_style_pad_top(about_content_, 0, 0);
-    lv_obj_set_style_pad_bottom(about_content_, 16, 0);
-    lv_obj_set_scroll_dir(about_content_, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(about_content_, LV_SCROLLBAR_MODE_OFF);
-
-    for (int i = 0; i < static_cast<int>(kAboutInfoItemCount); ++i) {
-        about_info_title_labels_[i] = lv_label_create(about_content_);
-        lv_label_set_text(about_info_title_labels_[i], GetAboutInfoTitle(i));
-        lv_obj_set_width(about_info_title_labels_[i], LV_HOR_RES - 32);
-        lv_obj_set_style_text_color(about_info_title_labels_[i], lv_color_hex(0x666666), 0);
-        lv_obj_set_style_text_font(about_info_title_labels_[i], lvgl_theme->text_font()->font(), 0);
-
-        about_info_value_labels_[i] = lv_label_create(about_content_);
-        lv_obj_set_width(about_info_value_labels_[i], LV_HOR_RES - 32);
-        lv_label_set_long_mode(about_info_value_labels_[i], LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_color(about_info_value_labels_[i], lv_color_black(), 0);
-        lv_obj_set_style_text_font(about_info_value_labels_[i], lvgl_theme->text_font()->font(), 0);
-
-        if (i < static_cast<int>(kAboutInfoItemCount) - 1) {
-            about_info_separator_labels_[i] = lv_obj_create(about_content_);
-            lv_obj_set_size(about_info_separator_labels_[i], LV_HOR_RES - 32, 1);
-            lv_obj_set_style_bg_color(about_info_separator_labels_[i], lv_color_hex(0xD9D9D9), 0);
-            lv_obj_set_style_bg_opa(about_info_separator_labels_[i], LV_OPA_COVER, 0);
-            lv_obj_set_style_border_width(about_info_separator_labels_[i], 0, 0);
-            lv_obj_set_style_radius(about_info_separator_labels_[i], 0, 0);
-            lv_obj_clear_flag(about_info_separator_labels_[i], LV_OBJ_FLAG_CLICKABLE);
-        }
-    }
-
-    about_back_button_data_ = BackButtonData{this, kBackTargetSettings};
-    CreateBackButton(about_screen_, &about_back_button_data_);
 }
 
 bool UiLcdDisplay::ShouldUseTransparentStatusBar(lv_obj_t* target_screen) {
@@ -1635,7 +1501,7 @@ void UiLcdDisplay::RefreshAiContentLayout(lv_coord_t top_padding) {
     lv_obj_set_style_pad_row(content_, row_padding, 0);
 }
 
-lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, BackButtonData* data, bool dark_surface) {
+lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, UiBackButtonData* data, bool dark_surface) {
     if (parent == nullptr || data == nullptr) {
         return nullptr;
     }
@@ -1684,64 +1550,6 @@ void UiLcdDisplay::StopCameraPreview() {
     if (camera_preview_timer_ != nullptr) {
         esp_timer_stop(camera_preview_timer_);
     }
-}
-
-void UiLcdDisplay::ShowAboutScreen() {
-    if (about_screen_ == nullptr) {
-        InitializeAboutScreen();
-    }
-
-    RefreshAboutScreenTexts();
-    DisplayLockGuard lock(this);
-    if (about_content_ != nullptr) {
-        lv_obj_scroll_to_y(about_content_, 0, LV_ANIM_OFF);
-    }
-    lv_screen_load(about_screen_);
-    MoveStatusBarToScreen(about_screen_);
-}
-
-void UiLcdDisplay::RefreshAboutScreenTexts() {
-    if (about_title_label_ == nullptr || about_content_ == nullptr) {
-        return;
-    }
-
-    DisplayLockGuard lock(this);
-    lv_label_set_text(about_title_label_, GetAboutTitle());
-
-    const std::array<std::string, kAboutInfoItemCount> values = {
-        GetFirmwareVersionForDisplay(),
-        GetActivationCodeForDisplay(),
-        GetServerAddressForDisplay(),
-        GetWifiMacAddressForDisplay(),
-        Get4gImeiForDisplay(),
-        GetIpAddressForDisplay(),
-        GetUuidForDisplay(),
-    };
-
-    int y = 0;
-    for (int i = 0; i < static_cast<int>(kAboutInfoItemCount); ++i) {
-        if (about_info_title_labels_[i] == nullptr || about_info_value_labels_[i] == nullptr) {
-            continue;
-        }
-
-        lv_label_set_text(about_info_title_labels_[i], GetAboutInfoTitle(i));
-        lv_label_set_text(about_info_value_labels_[i], values[i].c_str());
-        lv_obj_update_layout(about_content_);
-
-        lv_obj_set_pos(about_info_title_labels_[i], 0, y);
-        y += lv_obj_get_height(about_info_title_labels_[i]) + 4;
-
-        lv_obj_set_pos(about_info_value_labels_[i], 0, y);
-        y += lv_obj_get_height(about_info_value_labels_[i]) + 10;
-
-        if (i < static_cast<int>(kAboutInfoItemCount) - 1 &&
-            about_info_separator_labels_[i] != nullptr) {
-            lv_obj_set_pos(about_info_separator_labels_[i], 0, y);
-            y += 13;
-        }
-    }
-
-    lv_obj_update_layout(about_content_);
 }
 
 void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
@@ -1812,7 +1620,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         StopCameraPreview();
         UiMenuAiAlarm::HidePanel(*this);
         ClearFeatureVisual();
-        ShowSettingsScreen();
+        UiMenuSetting::ShowSettingsScreen(*this);
         return;
     }
 
@@ -2245,7 +2053,7 @@ void UiLcdDisplay::ShowPhotoViewer(const char* filename) {
         lv_obj_set_style_bg_color(photo_viewer_container_, lv_color_black(), 0);
         lv_obj_set_style_border_width(photo_viewer_container_, 0, 0);
         lv_obj_set_style_pad_all(photo_viewer_container_, 0, 0);
-        photo_viewer_back_button_data_ = BackButtonData{this, kBackTargetGallery};
+        photo_viewer_back_button_data_ = UiBackButtonData{this, kBackTargetGallery};
         CreateBackButton(photo_viewer_screen_, &photo_viewer_back_button_data_, true);
     }
 
@@ -2454,14 +2262,6 @@ void UiLcdDisplay::OnPhotoViewerGesture(lv_event_t* e) {
     (void)e;
 }
 
-void UiLcdDisplay::OnSettingsScreenGesture(lv_event_t* e) {
-    (void)e;
-}
-
-void UiLcdDisplay::OnAboutScreenGesture(lv_event_t* e) {
-    (void)e;
-}
-
 void UiLcdDisplay::OnCameraControlButtonClicked(lv_event_t* e) {
     auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
     auto* data = static_cast<CameraControlData*>(lv_obj_get_user_data(target));
@@ -2547,10 +2347,10 @@ void UiLcdDisplay::OnCameraActionButtonClicked(lv_event_t* e) {
 
 void UiLcdDisplay::OnBackButtonClicked(lv_event_t* e) {
     auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
-    auto* data = static_cast<BackButtonData*>(lv_obj_get_user_data(target));
+    auto* data = static_cast<UiBackButtonData*>(lv_obj_get_user_data(target));
     if (data != nullptr && data->display != nullptr) {
         if (data->target == kBackTargetSettings) {
-            data->display->ShowSettingsScreen();
+            UiMenuSetting::ShowSettingsScreen(*data->display);
         } else if (data->target == kBackTargetCamera) {
             data->display->ReturnToCameraScreen();
         } else if (data->target == kBackTargetGallery) {

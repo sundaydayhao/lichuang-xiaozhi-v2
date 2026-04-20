@@ -441,7 +441,7 @@ void UiLcdDisplay::ShowWordDictationTextbookScreen() {
         lv_obj_set_scroll_dir(word_dictation_content_, LV_DIR_VER);
         lv_obj_set_scrollbar_mode(word_dictation_content_, LV_SCROLLBAR_MODE_OFF);
 
-        word_dictation_back_button_data_ = BackButtonData{this, 4};
+        word_dictation_back_button_data_ = UiBackButtonData{this, 4};
         word_dictation_back_button_ = CreateBackButton(word_dictation_screen_, &word_dictation_back_button_data_);
     }
 
