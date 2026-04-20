@@ -700,7 +700,42 @@ void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
         }
 
         preview_image_cached_ = std::move(image);
-        lv_image_set_src(preview_image_, preview_image_cached_->image_dsc());
+        auto* img_dsc = preview_image_cached_->image_dsc();
+        lv_image_set_src(preview_image_, img_dsc);
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_FLOATING);
+
+        lv_coord_t target_width = LV_HOR_RES;
+        lv_coord_t target_height = LV_VER_RES;
+        if (content_ != nullptr && lv_obj_is_valid(content_)) {
+            lv_obj_update_layout(content_);
+            target_width = lv_obj_get_content_width(content_);
+            target_height = lv_obj_get_content_height(content_);
+            if (target_width <= 0) {
+                target_width = lv_obj_get_width(content_);
+            }
+            if (target_height <= 0) {
+                target_height = lv_obj_get_height(content_);
+            }
+        }
+
+        if (img_dsc != nullptr && img_dsc->header.w > 0 && img_dsc->header.h > 0 &&
+            target_width > 0 && target_height > 0) {
+            const int32_t scale_w =
+                (static_cast<int32_t>(target_width) * 256 + img_dsc->header.w - 1) / img_dsc->header.w;
+            const int32_t scale_h =
+                (static_cast<int32_t>(target_height) * 256 + img_dsc->header.h - 1) / img_dsc->header.h;
+            const int32_t scale = std::max(scale_w, scale_h);
+            lv_image_set_scale(preview_image_, scale);
+            lv_obj_set_size(preview_image_,
+                            static_cast<lv_coord_t>((img_dsc->header.w * scale) / 256),
+                            static_cast<lv_coord_t>((img_dsc->header.h * scale) / 256));
+        } else {
+            lv_image_set_scale(preview_image_, 256);
+            lv_obj_set_size(preview_image_, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        }
+
+        lv_obj_align(preview_image_, LV_ALIGN_CENTER, 0, 0);
         lv_obj_remove_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_foreground(preview_image_);
         esp_timer_stop(preview_timer_);

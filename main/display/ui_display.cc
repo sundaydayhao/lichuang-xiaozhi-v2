@@ -5,12 +5,14 @@
 #include "assets.h"
 #include "ble_hid.h"
 #include "board.h"
+#include "esp32_camera.h"
 #include "lvgl_theme.h"
 #include "settings.h"
 #include "system_info.h"
 #include "assets/lang_config.h"
 #include "widgets/list/lv_list.h"
 
+#include <cJSON.h>
 #include <at_modem.h>
 #include <esp_app_desc.h>
 #include <esp_err.h>
@@ -18,6 +20,7 @@
 #include <esp_log.h>
 #include <font_awesome.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/idf_additions.h>
 #include <freertos/task.h>
 #include <wifi_station.h>
 
@@ -30,6 +33,7 @@
 #include <initializer_list>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -54,6 +58,9 @@ constexpr int kAiAlarmOptionId = 1;
 constexpr int kSettingsOptionId = 12;
 constexpr int kEncyclopediaPromptTimeoutSeconds = 10;
 constexpr uint64_t kDialogueSceneTimerPeriodUs = 200 * 1000;
+constexpr char kVisionDefaultQuestion[] = "拍摄到的东西是什么";
+constexpr uint32_t kVisionTaskStackSize = 10 * 1024;
+constexpr UBaseType_t kVisionTaskPriority = 3;
 constexpr int kBackTargetMainMenu = 0;
 constexpr int kBackTargetSettings = 1;
 constexpr int kBackTargetCamera = 2;
@@ -63,6 +70,11 @@ constexpr char kRemoteSelfieDeviceName[] = "Xiaozhi-HID";
 constexpr uint32_t kRemoteSelfiePanelColor = 0xF2F2F2;
 constexpr uint32_t kRemoteSelfieInactiveColor = 0x979797;
 constexpr uint32_t kRemoteSelfieActiveColor = 0x39A856;
+
+struct VisionTaskContext {
+    UiLcdDisplay* display = nullptr;
+    std::string question;
+};
 
 lv_dir_t GetGestureDirection() {
     lv_indev_t* indev = lv_indev_active();
@@ -133,6 +145,62 @@ bool ContainsAnyKeyword(const std::string& text, std::initializer_list<const cha
     });
 }
 
+std::string TrimCopy(const std::string& text) {
+    size_t start = 0;
+    while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0) {
+        ++start;
+    }
+
+    size_t end = text.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0) {
+        --end;
+    }
+
+    return text.substr(start, end - start);
+}
+
+std::string ParseVisionExplainMessage(const std::string& response) {
+    const std::string trimmed = TrimCopy(response);
+    if (trimmed.empty()) {
+        return "没有识别结果，请再试一次";
+    }
+
+    cJSON* root = cJSON_Parse(trimmed.c_str());
+    if (root == nullptr) {
+        return trimmed;
+    }
+
+    std::string message;
+    if (cJSON_IsString(root) && root->valuestring != nullptr) {
+        message = root->valuestring;
+    } else {
+        cJSON* success = cJSON_GetObjectItem(root, "success");
+        cJSON* result = cJSON_GetObjectItem(root, "result");
+        cJSON* text = cJSON_GetObjectItem(root, "text");
+        cJSON* answer = cJSON_GetObjectItem(root, "answer");
+        cJSON* response_message = cJSON_GetObjectItem(root, "message");
+
+        const bool call_failed = cJSON_IsBool(success) && !cJSON_IsTrue(success);
+        cJSON* preferred = call_failed ? response_message : result;
+        if (!cJSON_IsString(preferred)) {
+            preferred = text;
+        }
+        if (!cJSON_IsString(preferred)) {
+            preferred = answer;
+        }
+        if (!cJSON_IsString(preferred)) {
+            preferred = response_message;
+        }
+
+        if (cJSON_IsString(preferred) && preferred->valuestring != nullptr) {
+            message = preferred->valuestring;
+        }
+    }
+
+    cJSON_Delete(root);
+    return message.empty() ? trimmed : message;
+}
+
 } // namespace
 
 UiLcdDisplay::UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
@@ -190,7 +258,7 @@ UiLcdDisplay::~UiLcdDisplay() {
 }
 
 void UiLcdDisplay::SetEmotion(const char* emotion) {
-    if (current_dialogue_scene_option_id_ == kMagicMirrorOptionId) {
+    if (current_dialogue_scene_option_id_ == kMagicMirrorOptionId || IsVisionFeatureActive()) {
         return;
     }
 
@@ -198,6 +266,11 @@ void UiLcdDisplay::SetEmotion(const char* emotion) {
 }
 
 void UiLcdDisplay::SetChatMessage(const char* role, const char* content) {
+    if (IsVisionFeatureActive()) {
+        ClearAiSceneMessages();
+        return;
+    }
+
     if (content != nullptr && content[0] != '\0') {
         if (current_dialogue_scene_option_id_ == kMagicMirrorOptionId) {
             SwitchMagicMirrorToChatMode();
@@ -315,6 +388,31 @@ bool UiLcdDisplay::IsDialogueSceneOption(int option_id) const {
     default:
         return false;
     }
+}
+
+bool UiLcdDisplay::IsVisionFeatureActive() const {
+    return current_feature_option_id_ == kVisionOptionId;
+}
+
+std::string UiLcdDisplay::BuildVisionScenePayload() const {
+    const std::string language = GetSelectedLanguageCode();
+    const std::string instructions =
+        "You are a camera vision assistant for children. "
+        "Always reply in the current reply_language. "
+        "When the user asks what the current camera preview is showing, what this is, what object is in front of the camera, "
+        "or says 拍摄到的东西是什么、这是什么、帮我识别一下, call self.camera.take_photo. "
+        "Use a short question that matches the user's request, then reply briefly and clearly. "
+        "Keep answers child-safe and concise.";
+
+    std::ostringstream oss;
+    oss << "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{"
+        << "\"scene\":\"vision\","
+        << "\"language\":\"" << language << "\","
+        << "\"reply_language\":\"" << language << "\","
+        << "\"input_language\":\"" << language << "\","
+        << "\"mode\":\"camera_preview_explain\","
+        << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
+    return oss.str();
 }
 
 std::string UiLcdDisplay::BuildRemoteSelfieScenePayload() const {
@@ -570,6 +668,10 @@ void UiLcdDisplay::RefreshMenuIconImages() {
 }
 
 void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
+    if (option_id == kVisionOptionId) {
+        ClearAiSceneMessages();
+    }
+    HideVisionResultLabel();
     current_feature_option_id_ = option_id;
 
     DisplayLockGuard lock(this);
@@ -587,6 +689,17 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     }
 
     if (feature_background_image_ == nullptr) {
+        return;
+    }
+
+    if (option_id == kVisionOptionId) {
+        suppress_emotion_display_ = true;
+        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+        DestroyEmotionWidgetsLocked();
+        if (preview_image_ != nullptr) {
+            lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+        }
+        RefreshAiContentLayout(0);
         return;
     }
 
@@ -620,6 +733,7 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
 }
 
 void UiLcdDisplay::ClearFeatureVisual() {
+    HideVisionResultLabel();
     current_feature_option_id_ = 0;
     magic_mirror_chat_started_ = false;
     suppress_emotion_display_ = false;
@@ -656,6 +770,7 @@ void UiLcdDisplay::ClearFeatureVisual() {
     if (magic_mirror_intro_container_ != nullptr) {
         lv_obj_add_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_HIDDEN);
     }
+    RefreshAiContentLayout(lv_obj_get_style_pad_top(content_, 0));
 }
 
 void UiLcdDisplay::HideAiPrintMessageLabel() {
@@ -759,6 +874,57 @@ void UiLcdDisplay::SwitchMagicMirrorToChatMode() {
     HideMagicMirrorIntro();
 }
 
+void UiLcdDisplay::ShowVisionResultLabel(const char* text) {
+    DisplayLockGuard lock(this);
+    if (ai_screen_ == nullptr) {
+        return;
+    }
+
+    if (vision_result_label_ != nullptr && !lv_obj_is_valid(vision_result_label_)) {
+        vision_result_label_ = nullptr;
+    }
+
+    if (vision_result_label_ == nullptr) {
+        auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
+        vision_result_label_ = lv_label_create(ai_screen_);
+        lv_obj_set_width(vision_result_label_, std::max(140, width_ - 72));
+        lv_label_set_long_mode(vision_result_label_, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_align(vision_result_label_, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_font(vision_result_label_, lvgl_theme->text_font()->font(), 0);
+        lv_obj_set_style_text_color(vision_result_label_, lv_color_white(), 0);
+        lv_obj_set_style_bg_color(vision_result_label_, lv_color_hex(0x111111), 0);
+        lv_obj_set_style_bg_opa(vision_result_label_, LV_OPA_70, 0);
+        lv_obj_set_style_border_width(vision_result_label_, 1, 0);
+        lv_obj_set_style_border_color(vision_result_label_, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_border_opa(vision_result_label_, LV_OPA_20, 0);
+        lv_obj_set_style_radius(vision_result_label_, 18, 0);
+        lv_obj_set_style_pad_hor(vision_result_label_, 14, 0);
+        lv_obj_set_style_pad_ver(vision_result_label_, 10, 0);
+        lv_obj_set_style_shadow_width(vision_result_label_, 18, 0);
+        lv_obj_set_style_shadow_color(vision_result_label_, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_shadow_opa(vision_result_label_, LV_OPA_10, 0);
+        lv_obj_add_flag(vision_result_label_, LV_OBJ_FLAG_FLOATING);
+        lv_obj_add_flag(vision_result_label_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_clear_flag(vision_result_label_, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(vision_result_label_, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (text == nullptr || text[0] == '\0') {
+        lv_label_set_text(vision_result_label_, "");
+        lv_obj_add_flag(vision_result_label_, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_label_set_text(vision_result_label_, text);
+    lv_obj_align(vision_result_label_, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_clear_flag(vision_result_label_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(vision_result_label_);
+}
+
+void UiLcdDisplay::HideVisionResultLabel() {
+    ShowVisionResultLabel("");
+}
+
 void UiLcdDisplay::SetDialogueSceneOverlayText(const char* text) {
     if (feature_overlay_label_ == nullptr) {
         return;
@@ -791,6 +957,117 @@ void UiLcdDisplay::ClearAiSceneMessages() {
         lv_obj_del(child);
     }
     chat_message_label_ = nullptr;
+}
+
+void UiLcdDisplay::StartVisionRecognition(const std::string& question) {
+    if (!IsVisionFeatureActive()) {
+        return;
+    }
+
+    bool expected = false;
+    if (!vision_recognition_running_.compare_exchange_strong(expected, true)) {
+        ShowNotification("正在识别中，请稍候", 1200);
+        return;
+    }
+
+    StopCameraPreview();
+    ShowVisionResultLabel("识别中...");
+
+    auto* context = new (std::nothrow) VisionTaskContext{
+        .display = this,
+        .question = question.empty() ? std::string(kVisionDefaultQuestion) : question,
+    };
+    if (context == nullptr) {
+        vision_recognition_running_ = false;
+        if (IsVisionFeatureActive()) {
+            StartCameraPreview(100);
+        }
+        ShowVisionResultLabel("启动识别失败，请重试");
+        return;
+    }
+
+    BaseType_t task_ret = pdFAIL;
+#if CONFIG_SPIRAM
+    task_ret = xTaskCreatePinnedToCoreWithCaps(
+        [](void* arg) {
+            std::unique_ptr<VisionTaskContext> holder(static_cast<VisionTaskContext*>(arg));
+            if (holder != nullptr && holder->display != nullptr) {
+                holder->display->RunVisionRecognitionTask(holder->question);
+            }
+            vTaskDelete(nullptr);
+        },
+        "vision_explain",
+        kVisionTaskStackSize,
+        context,
+        kVisionTaskPriority,
+        nullptr,
+        tskNO_AFFINITY,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    task_ret = xTaskCreatePinnedToCore(
+        [](void* arg) {
+            std::unique_ptr<VisionTaskContext> holder(static_cast<VisionTaskContext*>(arg));
+            if (holder != nullptr && holder->display != nullptr) {
+                holder->display->RunVisionRecognitionTask(holder->question);
+            }
+            vTaskDelete(nullptr);
+        },
+        "vision_explain",
+        kVisionTaskStackSize,
+        context,
+        kVisionTaskPriority,
+        nullptr,
+        tskNO_AFFINITY);
+#endif
+
+    if (task_ret != pdPASS) {
+        delete context;
+        vision_recognition_running_ = false;
+        if (IsVisionFeatureActive()) {
+            StartCameraPreview(100);
+        }
+        ShowVisionResultLabel("启动识别失败，请重试");
+    }
+}
+
+void UiLcdDisplay::RunVisionRecognitionTask(const std::string& question) {
+    std::string result_message;
+    auto* camera = Board::GetInstance().GetCamera();
+
+    if (camera == nullptr) {
+        result_message = "相机未就绪，请稍后再试";
+    } else {
+        try {
+            auto* esp32_camera = dynamic_cast<Esp32Camera*>(camera);
+            std::unique_ptr<Esp32Camera::CaptureLock> capture_lock;
+            if (esp32_camera != nullptr) {
+                capture_lock = esp32_camera->CaptureForExplain();
+                if (!capture_lock || !capture_lock->IsLocked()) {
+                    throw std::runtime_error("拍照失败，请重试");
+                }
+            } else if (!camera->Capture()) {
+                throw std::runtime_error("拍照失败，请重试");
+            }
+
+            result_message = ParseVisionExplainMessage(camera->Explain(question));
+        } catch (const std::exception& e) {
+            result_message = e.what();
+        }
+    }
+
+    if (result_message.empty()) {
+        result_message = "没有识别结果，请再试一次";
+    }
+
+    Application::GetInstance().Schedule([display_ptr = this, result_message = std::move(result_message)]() {
+        display_ptr->vision_recognition_running_ = false;
+        if (!display_ptr->IsVisionFeatureActive()) {
+            return;
+        }
+
+        display_ptr->ShowVisionResultLabel(result_message.c_str());
+        display_ptr->StartCameraPreview(100);
+    });
 }
 
 void UiLcdDisplay::MarkDialogueScenePromptCaptured() {
@@ -929,17 +1206,18 @@ void UiLcdDisplay::InitializeMainMenu() {
     lv_label_set_text(feature_overlay_label_, "");
     lv_obj_add_flag(feature_overlay_label_, LV_OBJ_FLAG_HIDDEN);
 
-    vision_ai_badge_ = lv_obj_create(ai_screen_);
+    vision_ai_badge_ = lv_btn_create(ai_screen_);
     lv_obj_set_size(vision_ai_badge_, 42, 42);
     lv_obj_align(vision_ai_badge_, LV_ALIGN_BOTTOM_LEFT, 12, -14);
     lv_obj_add_flag(vision_ai_badge_, LV_OBJ_FLAG_FLOATING);
     lv_obj_add_flag(vision_ai_badge_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_clear_flag(vision_ai_badge_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(vision_ai_badge_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(vision_ai_badge_, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_radius(vision_ai_badge_, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(vision_ai_badge_, lv_color_hex(0x111111), 0);
     lv_obj_set_style_bg_opa(vision_ai_badge_, LV_OPA_70, 0);
+    lv_obj_set_style_bg_color(vision_ai_badge_, lv_color_hex(0x0B0B0B), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(vision_ai_badge_, LV_OPA_80, LV_STATE_PRESSED);
     lv_obj_set_style_border_width(vision_ai_badge_, 1, 0);
     lv_obj_set_style_border_color(vision_ai_badge_, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(vision_ai_badge_, LV_OPA_30, 0);
@@ -947,10 +1225,13 @@ void UiLcdDisplay::InitializeMainMenu() {
     lv_obj_set_style_shadow_width(vision_ai_badge_, 12, 0);
     lv_obj_set_style_shadow_color(vision_ai_badge_, lv_color_hex(0x000000), 0);
     lv_obj_set_style_shadow_opa(vision_ai_badge_, LV_OPA_20, 0);
+    lv_obj_set_ext_click_area(vision_ai_badge_, 8);
+    lv_obj_set_user_data(vision_ai_badge_, this);
+    lv_obj_add_event_cb(vision_ai_badge_, OnVisionAiButtonClicked, LV_EVENT_CLICKED, nullptr);
     lv_obj_add_flag(vision_ai_badge_, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t* vision_ai_badge_label = lv_label_create(vision_ai_badge_);
-    lv_label_set_text(vision_ai_badge_label, "Ai");
+    lv_label_set_text(vision_ai_badge_label, "AI");
     lv_obj_center(vision_ai_badge_label);
     lv_obj_set_style_text_font(vision_ai_badge_label, lvgl_theme->text_font()->font(), 0);
     lv_obj_set_style_text_color(vision_ai_badge_label, lv_color_white(), 0);
@@ -1366,8 +1647,9 @@ void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
 
     if (content_ != nullptr) {
         lv_obj_update_layout(status_bar_);
-        const lv_coord_t reserved_top = (target_screen == ai_screen_) ? lv_obj_get_height(status_bar_) : 0;
-        lv_obj_set_style_pad_top(content_, reserved_top, 0);
+        const lv_coord_t reserved_top =
+            (target_screen == ai_screen_ && !IsVisionFeatureActive()) ? lv_obj_get_height(status_bar_) : 0;
+        RefreshAiContentLayout(reserved_top);
     }
 
     if (target_screen == ai_screen_ && feature_background_image_ != nullptr) {
@@ -1375,6 +1657,24 @@ void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
         lv_obj_set_pos(feature_background_image_, 0, 0);
         lv_obj_move_to_index(feature_background_image_, 0);
     }
+}
+
+void UiLcdDisplay::RefreshAiContentLayout(lv_coord_t top_padding) {
+    if (content_ == nullptr) {
+        return;
+    }
+
+    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
+    const bool immersive = IsVisionFeatureActive();
+    const lv_coord_t side_padding = immersive ? 0 : lvgl_theme->spacing(4);
+    const lv_coord_t bottom_padding = immersive ? 0 : lvgl_theme->spacing(4);
+    const lv_coord_t row_padding = immersive ? 0 : lvgl_theme->spacing(4);
+
+    lv_obj_set_style_pad_top(content_, top_padding, 0);
+    lv_obj_set_style_pad_bottom(content_, bottom_padding, 0);
+    lv_obj_set_style_pad_left(content_, side_padding, 0);
+    lv_obj_set_style_pad_right(content_, side_padding, 0);
+    lv_obj_set_style_pad_row(content_, row_padding, 0);
 }
 
 lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, BackButtonData* data, bool dark_surface) {
@@ -1506,6 +1806,12 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         ExitDialogueScene(true);
     }
 
+    if (option_id == kVisionOptionId) {
+        Application::GetInstance().SetSceneContextPayload(BuildVisionScenePayload());
+    } else {
+        Application::GetInstance().SetSceneContextPayload("");
+    }
+
     if (option_id == kRemoteSelfieOptionId) {
         if (camera_screen_ == nullptr) {
             InitializeCameraScreen();
@@ -1615,6 +1921,7 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 
 void UiLcdDisplay::ReturnToMainMenu() {
     ExitDialogueScene(true);
+    Application::GetInstance().SetSceneContextPayload("");
     SetPreviewPresentationMode(PreviewPresentationMode::kChatBubble);
     if (lv_screen_active() == camera_screen_) {
         CleanupRemoteSelfie();
@@ -1637,6 +1944,7 @@ void UiLcdDisplay::ReturnToMainMenu() {
 
 void UiLcdDisplay::ReturnToCameraScreen() {
     gallery_swipe_enabled_ = true;
+    Application::GetInstance().SetSceneContextPayload(BuildVisionScenePayload());
     SetPreviewPresentationMode(PreviewPresentationMode::kOverlay);
     HideAlarmPanel();
     ApplyFeatureVisual(kVisionOptionId);
@@ -1897,6 +2205,7 @@ void UiLcdDisplay::ShowGallery() {
     current_photo_image_.reset();
     current_photo_img_ = nullptr;
     StopCameraPreview();
+    Application::GetInstance().SetSceneContextPayload("");
 
     if (gallery_screen_ == nullptr) {
         InitializeGallery();
@@ -2155,6 +2464,14 @@ void UiLcdDisplay::OnMenuButtonClicked(lv_event_t* e) {
 
     if (code == LV_EVENT_RELEASED) {
         data->moved = false;
+    }
+}
+
+void UiLcdDisplay::OnVisionAiButtonClicked(lv_event_t* e) {
+    auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
+    auto* display = static_cast<UiLcdDisplay*>(lv_obj_get_user_data(target));
+    if (display != nullptr) {
+        display->StartVisionRecognition(kVisionDefaultQuestion);
     }
 }
 

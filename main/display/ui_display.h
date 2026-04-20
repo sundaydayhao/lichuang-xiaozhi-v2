@@ -146,6 +146,7 @@ private:
     lv_obj_t* ai_screen_ = nullptr;
     lv_obj_t* ai_back_button_ = nullptr;
     lv_obj_t* vision_ai_badge_ = nullptr;
+    lv_obj_t* vision_result_label_ = nullptr;
     lv_obj_t* feature_background_image_ = nullptr;
     lv_obj_t* feature_overlay_label_ = nullptr;
     lv_obj_t* magic_mirror_intro_container_ = nullptr;
@@ -258,6 +259,7 @@ private:
     esp_timer_handle_t camera_preview_timer_ = nullptr;
     std::function<void()> camera_preview_callback_;
     std::atomic<bool> ai_print_generation_running_ = false;
+    std::atomic<bool> vision_recognition_running_ = false;
     std::atomic<bool> remote_selfie_active_ = false;
     bool remote_selfie_audio_suspended_ = false;
     int current_dialogue_scene_option_id_ = 0;
@@ -315,6 +317,7 @@ private:
     void UpdateStatusBarAppearance(lv_obj_t* target_screen);
     bool ShouldUseTransparentStatusBar(lv_obj_t* target_screen);
     void MoveStatusBarToScreen(lv_obj_t* target_screen);
+    void RefreshAiContentLayout(lv_coord_t top_padding);
     lv_obj_t* CreateBackButton(lv_obj_t* parent, BackButtonData* data, bool dark_surface = false);
 
     void StartCameraPreview(int interval_ms);
@@ -396,6 +399,11 @@ private:
     void SetDialogueSceneOverlayText(const char* text);
     void ClearAiSceneMessages();
     void MarkDialogueScenePromptCaptured();
+    bool IsVisionFeatureActive() const;
+    void ShowVisionResultLabel(const char* text);
+    void HideVisionResultLabel();
+    void StartVisionRecognition(const std::string& question);
+    void RunVisionRecognitionTask(const std::string& question);
     void UpdateVisionAiBadgeVisibility();
     void RefreshMenuIconImages();
     const char* GetSettingsTitle() const;
@@ -423,6 +431,7 @@ private:
     std::string Get4gImeiForDisplay() const;
     std::string GetIpAddressForDisplay() const;
     std::string GetUuidForDisplay() const;
+    std::string BuildVisionScenePayload() const;
     std::string BuildRemoteSelfieScenePayload() const;
     std::string BuildDialogueScenePayload(int option_id) const;
     const lv_image_dsc_t* LoadAssetImage(const char* asset_name);
@@ -439,6 +448,7 @@ private:
     void LoadRawImage(lv_obj_t* img_obj, const char* filepath);
 
     static void OnMenuButtonClicked(lv_event_t* e);
+    static void OnVisionAiButtonClicked(lv_event_t* e);
     static void OnAiScreenGesture(lv_event_t* e);
     static void OnCameraScreenGesture(lv_event_t* e);
     static void OnGalleryScreenGesture(lv_event_t* e);
