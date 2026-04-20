@@ -48,7 +48,6 @@ constexpr int kOralPracticeOptionId = 3;
 constexpr int kVisionOptionId = 4;
 constexpr int kAiMassageOptionId = 5;
 constexpr int kRemoteSelfieOptionId = 6;
-constexpr int kAiPrintOptionId = 7;
 constexpr int kWordDictationOptionId = 8;
 constexpr int kFaceReadingOptionId = 9;
 constexpr int kMagicMirrorOptionId = 10;
@@ -313,8 +312,8 @@ const char* UiLcdDisplay::GetMenuText(int option_id) const {
         return "除皱按摩";
     case kRemoteSelfieOptionId:
         return "AI自拍杆";
-    case kAiPrintOptionId:
-        return "AI打印";
+    case kUiMenuAiPrintOptionId:
+        return UiMenuAiPrint::GetMenuText();
     case kWordDictationOptionId:
         return "单词听写";
     case kFaceReadingOptionId:
@@ -344,8 +343,8 @@ const char* UiLcdDisplay::GetMenuIconAssetName(int option_id) const {
         return "menu_ai_massage.png";
     case kRemoteSelfieOptionId:
         return "menu_remote_selfie.png";
-    case kAiPrintOptionId:
-        return "menu_ai_print.png";
+    case kUiMenuAiPrintOptionId:
+        return UiMenuAiPrint::GetMenuIconAssetName();
     case kWordDictationOptionId:
         return "menu_word_dictation.png";
     case kFaceReadingOptionId:
@@ -384,7 +383,7 @@ bool UiLcdDisplay::IsDialogueSceneOption(int option_id) const {
     case kEncyclopediaOptionId:
     case kOralPracticeOptionId:
     case kAiMassageOptionId:
-    case kAiPrintOptionId:
+    case kUiMenuAiPrintOptionId:
     case kFaceReadingOptionId:
     case kMagicMirrorOptionId:
         return true;
@@ -501,18 +500,8 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
             "Focus on light pressure, stretching, and comfort reminders. "
             "Do not claim diagnosis or treatment, and tell the user to stop if anything hurts.";
         break;
-    case kAiPrintOptionId:
-        scene = "ai_print";
-        mode = "photo_print_assistant";
-        instructions =
-            "You are an AI photo print assistant for children. "
-            "Always reply in the current reply_language. "
-            "First help the user choose a style such as 动漫, 卡通, 手绘, or 黑白线稿. "
-            "When the user wants to use the camera, call self.camera.take_photo. "
-            "After seeing the photo, describe how it would look in the chosen style. "
-            "If real printing hardware is unavailable, clearly say that only style "
-            "planning and preview advice are available.";
-        break;
+    case kUiMenuAiPrintOptionId:
+        return UiMenuAiPrint::BuildScenePayload(*this);
     case kFaceReadingOptionId:
         scene = "fortune";
         mode = "entertainment_face_reading";
@@ -668,7 +657,7 @@ void UiLcdDisplay::ApplyFeatureVisual(int option_id) {
     }
     preview_image_cached_.reset();
     UpdateVisionAiBadgeVisibility();
-    HideAiPrintMessageLabel();
+    UiMenuAiPrint::HideMessageLabel(*this);
 
     lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
     if (chat_label != nullptr) {
@@ -732,7 +721,7 @@ void UiLcdDisplay::ClearFeatureVisual() {
     }
     preview_image_cached_.reset();
     UpdateVisionAiBadgeVisibility();
-    HideAiPrintMessageLabel();
+    UiMenuAiPrint::HideMessageLabel(*this);
 
     lv_obj_t* chat_label = TakeValidObject(chat_message_label_);
     if (chat_label != nullptr) {
@@ -759,16 +748,6 @@ void UiLcdDisplay::ClearFeatureVisual() {
         lv_obj_add_flag(magic_mirror_intro_container_, LV_OBJ_FLAG_HIDDEN);
     }
     RefreshAiContentLayout(lv_obj_get_style_pad_top(content_, 0));
-}
-
-void UiLcdDisplay::HideAiPrintMessageLabel() {
-    lv_obj_t* label = TakeValidObject(ai_print_message_label_);
-    if (label == nullptr) {
-        return;
-    }
-
-    lv_label_set_text(label, "");
-    lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
 }
 
 void UiLcdDisplay::InitializeMagicMirrorIntro() {
@@ -1131,9 +1110,9 @@ void UiLcdDisplay::EnterDialogueScene(int option_id) {
     if (option_id == kAiAlarmOptionId) {
         ApplyFeatureVisual(option_id);
         UiMenuAiAlarm::ShowPanel(*this);
-    } else if (option_id == kAiPrintOptionId) {
+    } else if (UiMenuAiPrint::IsOptionId(option_id)) {
         ApplyFeatureVisual(option_id);
-        ShowAiPrintListeningState();
+        UiMenuAiPrint::ShowListeningState(*this);
     } else {
         ApplyFeatureVisual(option_id);
     }
@@ -1893,9 +1872,6 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         StopCameraPreview();
     }
 
-    if (option_id == kAiPrintOptionId) {
-        ShowAiPrintListeningState();
-    }
 }
 
 void UiLcdDisplay::ReturnToMainMenu() {

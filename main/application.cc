@@ -10,6 +10,7 @@
 #include "assets.h"
 #include "boards/bread-compact-ml307camtou/lamp_G.h"
 #include "display/ui_display.h"
+#include "display/ui_menu_ai_print.h"
 #include "settings.h"
 
 #include <cstring>
@@ -528,7 +529,8 @@ void Application::Start() {
         Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
             auto* ui_display = dynamic_cast<UiLcdDisplay*>(display);
-            if (!(suppress_server_messages_ && ui_display != nullptr && ui_display->IsAiPrintActive())) {
+            if (!(suppress_server_messages_ && ui_display != nullptr &&
+                  UiMenuAiPrint::IsActive(*ui_display))) {
                 display->SetChatMessage("system", "");
             }
             SetDeviceState(kDeviceStateIdle);

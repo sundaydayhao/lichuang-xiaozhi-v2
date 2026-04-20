@@ -3,6 +3,7 @@
 
 #include "lcd_display.h"
 #include "ui_menu_ai_alarm.h"
+#include "ui_menu_ai_print.h"
 #include "device_state.h"
 
 #include <array>
@@ -15,7 +16,6 @@
 #include <esp_timer.h>
 #include <vector>
 
-class UiPrintPanel;
 class UiLcdDisplay : public SpiLcdDisplay {
 public:
     static constexpr size_t kMenuItemCount = 12;
@@ -46,12 +46,11 @@ public:
     void SetPreviewImage(std::unique_ptr<LvglImage> image) override;
     void SetCameraPreviewCallback(std::function<void()> callback);
     bool HandleFeatureSpeechRecognized(const std::string& text);
-    bool IsAiPrintActive() const;
     bool IsRemoteSelfieActive() const;
     bool ExecuteRemoteSelfieAction(RemoteSelfieAction action);
 
 private:
-    friend class UiPrintPanel;
+    friend class UiMenuAiPrint;
     friend class UiMenuAiAlarm;
 
     struct MenuButtonData {
@@ -154,7 +153,7 @@ private:
     lv_obj_t* magic_mirror_intro_container_ = nullptr;
     lv_obj_t* magic_mirror_intro_emoji_ = nullptr;
     lv_obj_t* magic_mirror_intro_text_ = nullptr;
-    lv_obj_t* ai_print_message_label_ = nullptr;
+    UiMenuAiPrintState ai_print_ = {};
     lv_obj_t* menu_screen_ = nullptr;
     lv_obj_t* menu_page_container_ = nullptr;
     lv_obj_t* menu_page1_ = nullptr;
@@ -244,7 +243,6 @@ private:
     int current_feature_option_id_ = 0;
     esp_timer_handle_t camera_preview_timer_ = nullptr;
     std::function<void()> camera_preview_callback_;
-    std::atomic<bool> ai_print_generation_running_ = false;
     std::atomic<bool> vision_recognition_running_ = false;
     std::atomic<bool> remote_selfie_active_ = false;
     bool remote_selfie_audio_suspended_ = false;
@@ -324,11 +322,6 @@ private:
     void CleanupRemoteSelfie();
     void RequestCameraBleStatusRefresh();
     void UpdateCameraBleStatus(bool connected);
-    void ShowAiPrintListeningState();
-    void ShowAiPrintGeneratingState();
-    void ShowAiPrintErrorState(const std::string& message);
-    void ShowAiPrintResultImage(std::unique_ptr<LvglImage> image);
-    void HideAiPrintMessageLabel();
     void InitializeMagicMirrorIntro();
     void ShowMagicMirrorIntro();
     void HideMagicMirrorIntro();

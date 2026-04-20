@@ -17,6 +17,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -38,11 +39,20 @@ constexpr int kAiPrintMaxPollAttempts = 20;
 constexpr size_t kAiPrintJpegWorkBufferSize = 16 * 1024;
 constexpr uint32_t kAiPrintTaskStackSize = 12 * 1024;
 constexpr UBaseType_t kAiPrintTaskPriority = 3;
-constexpr int kAiPrintOptionId = 7;
+
 struct AiPrintTaskContext {
     UiLcdDisplay* display = nullptr;
     std::string prompt;
 };
+
+lv_obj_t* TakeValidObject(lv_obj_t*& object) {
+    if (object != nullptr && lv_obj_is_valid(object)) {
+        return object;
+    }
+
+    object = nullptr;
+    return nullptr;
+}
 
 std::string TrimCopy(const std::string& text) {
     size_t start = 0;
@@ -56,6 +66,34 @@ std::string TrimCopy(const std::string& text) {
     }
 
     return text.substr(start, end - start);
+}
+
+std::string EscapeJsonString(const std::string& input) {
+    std::string escaped;
+    escaped.reserve(input.size() + 16);
+    for (char ch : input) {
+        switch (ch) {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            escaped += ch;
+            break;
+        }
+    }
+    return escaped;
 }
 
 std::string BuildJsonBody(const std::string& prompt) {
@@ -312,8 +350,42 @@ std::unique_ptr<LvglImage> DecodeJpegToPreviewImage(const std::string& jpeg_byte
 
 } // namespace
 
-bool UiLcdDisplay::IsAiPrintActive() const {
-    return current_feature_option_id_ == kAiPrintOptionId;
+bool UiMenuAiPrint::IsOptionId(int option_id) {
+    return option_id == kUiMenuAiPrintOptionId;
+}
+
+bool UiMenuAiPrint::IsActive(const UiLcdDisplay& display) {
+    return display.current_feature_option_id_ == kUiMenuAiPrintOptionId;
+}
+
+const char* UiMenuAiPrint::GetMenuText() {
+    return "AI打印";
+}
+
+const char* UiMenuAiPrint::GetMenuIconAssetName() {
+    return "menu_ai_print.png";
+}
+
+std::string UiMenuAiPrint::BuildScenePayload(const UiLcdDisplay& display) {
+    const std::string language = display.GetSelectedLanguageCode();
+    const std::string instructions =
+        "You are an AI photo print assistant for children. "
+        "Always reply in the current reply_language. "
+        "First help the user choose a style such as 动漫, 卡通, 手绘, or 黑白线稿. "
+        "When the user wants to use the camera, call self.camera.take_photo. "
+        "After seeing the photo, describe how it would look in the chosen style. "
+        "If real printing hardware is unavailable, clearly say that only style "
+        "planning and preview advice are available.";
+
+    std::ostringstream oss;
+    oss << "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{"
+        << "\"scene\":\"ai_print\","
+        << "\"language\":\"" << language << "\","
+        << "\"reply_language\":\"" << language << "\","
+        << "\"input_language\":\"" << language << "\","
+        << "\"mode\":\"photo_print_assistant\","
+        << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
+    return oss.str();
 }
 
 bool UiLcdDisplay::HandleFeatureSpeechRecognized(const std::string& text) {
@@ -321,13 +393,13 @@ bool UiLcdDisplay::HandleFeatureSpeechRecognized(const std::string& text) {
     if (HandleRemoteSelfieSpeechRecognized(text)) {
         return true;
     }
-    return UiPrintPanel::HandleSpeechRecognized(*this, text);
+    return UiMenuAiPrint::HandleSpeechRecognized(*this, text);
 }
 
-lv_obj_t* UiPrintPanel::EnsureMessageLabel(UiLcdDisplay& display) {
-    if (display.ai_print_message_label_ != nullptr &&
-        lv_obj_is_valid(display.ai_print_message_label_)) {
-        return display.ai_print_message_label_;
+lv_obj_t* UiMenuAiPrint::EnsureMessageLabel(UiLcdDisplay& display) {
+    if (display.ai_print_.message_label != nullptr &&
+        lv_obj_is_valid(display.ai_print_.message_label)) {
+        return display.ai_print_.message_label;
     }
 
     lv_obj_t* parent = display.ai_screen_ != nullptr ? display.ai_screen_ : display.content_;
@@ -346,11 +418,11 @@ lv_obj_t* UiPrintPanel::EnsureMessageLabel(UiLcdDisplay& display) {
     lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
     lv_label_set_text(label, "");
     lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
-    display.ai_print_message_label_ = label;
+    display.ai_print_.message_label = label;
     return label;
 }
 
-void UiPrintPanel::SetMessageLabel(UiLcdDisplay& display, const char* text) {
+void UiMenuAiPrint::SetMessageLabel(UiLcdDisplay& display, const char* text) {
     lv_obj_t* label = EnsureMessageLabel(display);
     if (label == nullptr) {
         return;
@@ -366,96 +438,96 @@ void UiPrintPanel::SetMessageLabel(UiLcdDisplay& display, const char* text) {
     AlignAiPrintMessageBelowEmoji(label, display.emoji_label_, display.emoji_image_);
 }
 
-void UiLcdDisplay::ShowAiPrintListeningState() {
-    DisplayLockGuard lock(this);
-    if (preview_timer_ != nullptr) {
-        esp_timer_stop(preview_timer_);
+void UiMenuAiPrint::ShowListeningState(UiLcdDisplay& display) {
+    DisplayLockGuard lock(&display);
+    if (display.preview_timer_ != nullptr) {
+        esp_timer_stop(display.preview_timer_);
     }
-    preview_image_cached_.reset();
+    display.preview_image_cached_.reset();
 
-    if (preview_image_ != nullptr) {
-        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    if (display.preview_image_ != nullptr) {
+        lv_obj_clear_flag(display.preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_flag(display.preview_image_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (feature_background_image_ != nullptr) {
-        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    if (display.feature_background_image_ != nullptr) {
+        lv_obj_add_flag(display.feature_background_image_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (emoji_box_ != nullptr) {
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    if (display.emoji_box_ != nullptr) {
+        lv_obj_remove_flag(display.emoji_box_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (chat_message_label_ != nullptr && lv_obj_is_valid(chat_message_label_)) {
-        lv_label_set_text(chat_message_label_, "");
+    if (display.chat_message_label_ != nullptr && lv_obj_is_valid(display.chat_message_label_)) {
+        lv_label_set_text(display.chat_message_label_, "");
     }
-    UiPrintPanel::SetMessageLabel(*this, "请直接说你想要画的内容\n例如：使用线条风格画一只带围巾的大熊猫");
+    SetMessageLabel(display, "请直接说你想要画的内容\n例如：使用线条风格画一只带围巾的大熊猫");
 }
 
-void UiLcdDisplay::ShowAiPrintGeneratingState() {
-    DisplayLockGuard lock(this);
-    if (preview_timer_ != nullptr) {
-        esp_timer_stop(preview_timer_);
+void UiMenuAiPrint::ShowGeneratingState(UiLcdDisplay& display) {
+    DisplayLockGuard lock(&display);
+    if (display.preview_timer_ != nullptr) {
+        esp_timer_stop(display.preview_timer_);
     }
-    preview_image_cached_.reset();
+    display.preview_image_cached_.reset();
 
-    if (preview_image_ != nullptr) {
-        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    if (display.preview_image_ != nullptr) {
+        lv_obj_clear_flag(display.preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_flag(display.preview_image_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (feature_background_image_ != nullptr) {
-        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    if (display.feature_background_image_ != nullptr) {
+        lv_obj_add_flag(display.feature_background_image_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (emoji_box_ != nullptr) {
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    if (display.emoji_box_ != nullptr) {
+        lv_obj_remove_flag(display.emoji_box_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (chat_message_label_ != nullptr && lv_obj_is_valid(chat_message_label_)) {
-        lv_label_set_text(chat_message_label_, "");
+    if (display.chat_message_label_ != nullptr && lv_obj_is_valid(display.chat_message_label_)) {
+        lv_label_set_text(display.chat_message_label_, "");
     }
-    UiPrintPanel::SetMessageLabel(*this, "正在生成图片，请稍候...");
+    SetMessageLabel(display, "正在生成图片，请稍候...");
 }
 
-void UiLcdDisplay::ShowAiPrintErrorState(const std::string& message) {
-    DisplayLockGuard lock(this);
-    if (preview_timer_ != nullptr) {
-        esp_timer_stop(preview_timer_);
+void UiMenuAiPrint::ShowErrorState(UiLcdDisplay& display, const std::string& message) {
+    DisplayLockGuard lock(&display);
+    if (display.preview_timer_ != nullptr) {
+        esp_timer_stop(display.preview_timer_);
     }
-    preview_image_cached_.reset();
+    display.preview_image_cached_.reset();
 
-    if (preview_image_ != nullptr) {
-        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    if (display.preview_image_ != nullptr) {
+        lv_obj_clear_flag(display.preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_add_flag(display.preview_image_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (feature_background_image_ != nullptr) {
-        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    if (display.feature_background_image_ != nullptr) {
+        lv_obj_add_flag(display.feature_background_image_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (emoji_box_ != nullptr) {
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    if (display.emoji_box_ != nullptr) {
+        lv_obj_remove_flag(display.emoji_box_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (chat_message_label_ != nullptr && lv_obj_is_valid(chat_message_label_)) {
-        lv_label_set_text(chat_message_label_, "");
+    if (display.chat_message_label_ != nullptr && lv_obj_is_valid(display.chat_message_label_)) {
+        lv_label_set_text(display.chat_message_label_, "");
     }
-    UiPrintPanel::SetMessageLabel(*this, message.c_str());
+    SetMessageLabel(display, message.c_str());
 }
 
-void UiLcdDisplay::ShowAiPrintResultImage(std::unique_ptr<LvglImage> image) {
+void UiMenuAiPrint::ShowResultImage(UiLcdDisplay& display, std::unique_ptr<LvglImage> image) {
     if (image == nullptr) {
-        ShowAiPrintErrorState("图片生成成功\n但设备解码失败");
+        ShowErrorState(display, "图片生成成功\n但设备解码失败");
         return;
     }
 
-    DisplayLockGuard lock(this);
-    if (preview_timer_ != nullptr) {
-        esp_timer_stop(preview_timer_);
+    DisplayLockGuard lock(&display);
+    if (display.preview_timer_ != nullptr) {
+        esp_timer_stop(display.preview_timer_);
     }
 
-    preview_image_cached_ = std::move(image);
-    if (preview_image_ == nullptr) {
+    display.preview_image_cached_ = std::move(image);
+    if (display.preview_image_ == nullptr) {
         return;
     }
 
-    auto img_dsc = preview_image_cached_->image_dsc();
-    lv_image_set_src(preview_image_, img_dsc);
+    auto img_dsc = display.preview_image_cached_->image_dsc();
+    lv_image_set_src(display.preview_image_, img_dsc);
 
-    const lv_coord_t max_width = width_;
-    const lv_coord_t max_height = height_ - 27;
+    const lv_coord_t max_width = display.width_;
+    const lv_coord_t max_height = display.height_ - 27;
     lv_coord_t scale = 256;
     if (img_dsc->header.w > 0 && img_dsc->header.h > 0) {
         const lv_coord_t scale_w = (max_width * 256) / img_dsc->header.w;
@@ -469,33 +541,43 @@ void UiLcdDisplay::ShowAiPrintResultImage(std::unique_ptr<LvglImage> image) {
         }
     }
 
-    lv_image_set_scale(preview_image_, scale);
-    lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_align(preview_image_, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_remove_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    lv_image_set_scale(display.preview_image_, scale);
+    lv_obj_add_flag(display.preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_align(display.preview_image_, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_remove_flag(display.preview_image_, LV_OBJ_FLAG_HIDDEN);
 
-    if (feature_background_image_ != nullptr) {
-        lv_obj_add_flag(feature_background_image_, LV_OBJ_FLAG_HIDDEN);
+    if (display.feature_background_image_ != nullptr) {
+        lv_obj_add_flag(display.feature_background_image_, LV_OBJ_FLAG_HIDDEN);
     }
-    if (emoji_box_ != nullptr) {
-        lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    if (display.emoji_box_ != nullptr) {
+        lv_obj_add_flag(display.emoji_box_, LV_OBJ_FLAG_HIDDEN);
     }
-    HideAiPrintMessageLabel();
-    if (chat_message_label_ != nullptr && lv_obj_is_valid(chat_message_label_)) {
-        lv_label_set_text(chat_message_label_, "");
+    HideMessageLabel(display);
+    if (display.chat_message_label_ != nullptr && lv_obj_is_valid(display.chat_message_label_)) {
+        lv_label_set_text(display.chat_message_label_, "");
     }
 }
 
-bool UiPrintPanel::HandleSpeechRecognized(UiLcdDisplay& display, const std::string& text) {
-    if (!display.IsAiPrintActive()) {
+void UiMenuAiPrint::HideMessageLabel(UiLcdDisplay& display) {
+    lv_obj_t* label = TakeValidObject(display.ai_print_.message_label);
+    if (label == nullptr) {
+        return;
+    }
+
+    lv_label_set_text(label, "");
+    lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+}
+
+bool UiMenuAiPrint::HandleSpeechRecognized(UiLcdDisplay& display, const std::string& text) {
+    if (!IsActive(display)) {
         return false;
     }
 
     const std::string prompt = BuildPrompt(text);
     if (prompt.empty()) {
         Application::GetInstance().Schedule([display_ptr = &display]() {
-            if (display_ptr->IsAiPrintActive()) {
-                display_ptr->ShowAiPrintErrorState("没有识别到绘图内容\n请再试一次");
+            if (UiMenuAiPrint::IsActive(*display_ptr)) {
+                UiMenuAiPrint::ShowErrorState(*display_ptr, "没有识别到绘图内容\n请再试一次");
             }
         });
         return true;
@@ -505,7 +587,7 @@ bool UiPrintPanel::HandleSpeechRecognized(UiLcdDisplay& display, const std::stri
     return true;
 }
 
-std::string UiPrintPanel::BuildPrompt(const std::string& text) {
+std::string UiMenuAiPrint::BuildPrompt(const std::string& text) {
     std::string prompt = TrimCopy(text);
     if (prompt.empty()) {
         return "";
@@ -521,23 +603,23 @@ std::string UiPrintPanel::BuildPrompt(const std::string& text) {
     return prompt;
 }
 
-void UiPrintPanel::StartGeneration(UiLcdDisplay& display, const std::string& prompt) {
+void UiMenuAiPrint::StartGeneration(UiLcdDisplay& display, const std::string& prompt) {
     bool expected = false;
-    if (!display.ai_print_generation_running_.compare_exchange_strong(expected, true)) {
+    if (!display.ai_print_.generation_running.compare_exchange_strong(expected, true)) {
         Application::GetInstance().Schedule([display_ptr = &display]() {
-            if (display_ptr->IsAiPrintActive()) {
-                display_ptr->ShowAiPrintErrorState("上一张图片还在生成\n请稍候再试");
+            if (UiMenuAiPrint::IsActive(*display_ptr)) {
+                UiMenuAiPrint::ShowErrorState(*display_ptr, "上一张图片还在生成\n请稍候再试");
             }
         });
         return;
     }
 
     Application::GetInstance().Schedule([display_ptr = &display]() {
-        if (!display_ptr->IsAiPrintActive()) {
-            display_ptr->ai_print_generation_running_ = false;
+        if (!UiMenuAiPrint::IsActive(*display_ptr)) {
+            display_ptr->ai_print_.generation_running = false;
             return;
         }
-        display_ptr->ShowAiPrintGeneratingState();
+        UiMenuAiPrint::ShowGeneratingState(*display_ptr);
     });
 
     auto* context = new (std::nothrow) AiPrintTaskContext{
@@ -545,10 +627,10 @@ void UiPrintPanel::StartGeneration(UiLcdDisplay& display, const std::string& pro
         .prompt = prompt,
     };
     if (context == nullptr) {
-        display.ai_print_generation_running_ = false;
+        display.ai_print_.generation_running = false;
         Application::GetInstance().Schedule([display_ptr = &display]() {
-            if (display_ptr->IsAiPrintActive()) {
-                display_ptr->ShowAiPrintErrorState("启动生图任务失败\n内存不足");
+            if (UiMenuAiPrint::IsActive(*display_ptr)) {
+                UiMenuAiPrint::ShowErrorState(*display_ptr, "启动生图任务失败\n内存不足");
             }
         });
         return;
@@ -560,7 +642,7 @@ void UiPrintPanel::StartGeneration(UiLcdDisplay& display, const std::string& pro
         [](void* arg) {
             std::unique_ptr<AiPrintTaskContext> holder(static_cast<AiPrintTaskContext*>(arg));
             if (holder != nullptr && holder->display != nullptr) {
-                UiPrintPanel::RunTask(*holder->display, holder->prompt);
+                UiMenuAiPrint::RunTask(*holder->display, holder->prompt);
             }
             vTaskDelete(nullptr);
         },
@@ -576,7 +658,7 @@ void UiPrintPanel::StartGeneration(UiLcdDisplay& display, const std::string& pro
         [](void* arg) {
             std::unique_ptr<AiPrintTaskContext> holder(static_cast<AiPrintTaskContext*>(arg));
             if (holder != nullptr && holder->display != nullptr) {
-                UiPrintPanel::RunTask(*holder->display, holder->prompt);
+                UiMenuAiPrint::RunTask(*holder->display, holder->prompt);
             }
             vTaskDelete(nullptr);
         },
@@ -590,16 +672,16 @@ void UiPrintPanel::StartGeneration(UiLcdDisplay& display, const std::string& pro
 
     if (task_ret != pdPASS) {
         delete context;
-        display.ai_print_generation_running_ = false;
+        display.ai_print_.generation_running = false;
         Application::GetInstance().Schedule([display_ptr = &display]() {
-            if (display_ptr->IsAiPrintActive()) {
-                display_ptr->ShowAiPrintErrorState("启动生图任务失败\n任务创建失败");
+            if (UiMenuAiPrint::IsActive(*display_ptr)) {
+                UiMenuAiPrint::ShowErrorState(*display_ptr, "启动生图任务失败\n任务创建失败");
             }
         });
     }
 }
 
-void UiPrintPanel::RunTask(UiLcdDisplay& display, const std::string& prompt) {
+void UiMenuAiPrint::RunTask(UiLcdDisplay& display, const std::string& prompt) {
     std::string error_message;
     std::string prompt_id;
     std::string image_url;
@@ -625,9 +707,9 @@ void UiPrintPanel::RunTask(UiLcdDisplay& display, const std::string& prompt) {
 
     if (!error_message.empty()) {
         Application::GetInstance().Schedule([display_ptr = &display, error_message]() {
-            display_ptr->ai_print_generation_running_ = false;
-            if (display_ptr->IsAiPrintActive()) {
-                display_ptr->ShowAiPrintErrorState(error_message);
+            display_ptr->ai_print_.generation_running = false;
+            if (UiMenuAiPrint::IsActive(*display_ptr)) {
+                UiMenuAiPrint::ShowErrorState(*display_ptr, error_message);
             }
         });
         return;
@@ -635,18 +717,18 @@ void UiPrintPanel::RunTask(UiLcdDisplay& display, const std::string& prompt) {
 
     auto image_data = std::make_shared<std::string>(std::move(image_bytes));
     Application::GetInstance().Schedule([display_ptr = &display, image_data]() {
-        display_ptr->ai_print_generation_running_ = false;
-        if (!display_ptr->IsAiPrintActive()) {
+        display_ptr->ai_print_.generation_running = false;
+        if (!UiMenuAiPrint::IsActive(*display_ptr)) {
             return;
         }
 
         auto image = DecodeJpegToPreviewImage(*image_data);
         if (image == nullptr) {
-            display_ptr->ShowAiPrintErrorState("图片生成成功\n但设备解码失败");
+            UiMenuAiPrint::ShowErrorState(*display_ptr, "图片生成成功\n但设备解码失败");
             return;
         }
 
-        display_ptr->ShowAiPrintResultImage(std::move(image));
+        UiMenuAiPrint::ShowResultImage(*display_ptr, std::move(image));
         if (Application::GetInstance().GetDeviceState() == kDeviceStateIdle) {
             Application::GetInstance().ToggleChatState();
         }
