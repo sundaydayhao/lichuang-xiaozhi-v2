@@ -23,6 +23,17 @@ public:
     static constexpr size_t kServerSwitchOptionCount = 2;
     static constexpr size_t kLanguageSwitchOptionCount = 3;
     static constexpr size_t kAboutInfoItemCount = 7;
+    static constexpr size_t kCameraDirectionButtonCount = 4;
+    static constexpr size_t kCameraControlCount = 6;
+
+    enum class RemoteSelfieAction {
+        kSwipeUp = 0,
+        kSwipeDown,
+        kSwipeLeft,
+        kSwipeRight,
+        kFocus,
+        kCapture,
+    };
 
     UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                  int width, int height, int offset_x, int offset_y,
@@ -35,14 +46,11 @@ public:
     void SetCameraPreviewCallback(std::function<void()> callback);
     bool HandleFeatureSpeechRecognized(const std::string& text);
     bool IsAiPrintActive() const;
+    bool IsRemoteSelfieActive() const;
+    bool ExecuteRemoteSelfieAction(RemoteSelfieAction action);
 
 private:
     friend class UiPrintPanel;
-
-    enum class CameraMode {
-        kPhoto = 0,
-        kVideo = 1,
-    };
 
     struct MenuButtonData {
         UiLcdDisplay* display = nullptr;
@@ -59,6 +67,11 @@ private:
     struct BackButtonData {
         UiLcdDisplay* display = nullptr;
         int target = 0;
+    };
+
+    struct CameraControlData {
+        UiLcdDisplay* display = nullptr;
+        RemoteSelfieAction action = RemoteSelfieAction::kSwipeUp;
     };
 
     struct NetworkSwitchOptionData {
@@ -194,12 +207,18 @@ private:
     BackButtonData sleep_music_back_button_data_ = {};
 
     lv_obj_t* camera_screen_ = nullptr;
-    lv_obj_t* camera_mode_btn_left_ = nullptr;
-    lv_obj_t* camera_mode_btn_center_ = nullptr;
-    lv_obj_t* camera_mode_btn_right_ = nullptr;
+    lv_obj_t* camera_card_ = nullptr;
+    lv_obj_t* camera_focus_btn_ = nullptr;
+    lv_obj_t* camera_shutter_btn_ = nullptr;
+    lv_obj_t* camera_shutter_body_ = nullptr;
+    lv_obj_t* camera_shutter_top_ = nullptr;
+    lv_obj_t* camera_shutter_lens_ring_ = nullptr;
+    lv_obj_t* camera_shutter_flash_dot_ = nullptr;
+    std::array<lv_obj_t*, kCameraDirectionButtonCount> camera_direction_buttons_ = {};
+    std::array<lv_obj_t*, kCameraDirectionButtonCount> camera_direction_icon_labels_ = {};
+    std::array<CameraControlData, kCameraControlCount> camera_control_data_ = {};
     lv_obj_t* camera_ble_status_label_ = nullptr;
-    CameraMode current_camera_mode_ = CameraMode::kPhoto;
-    bool is_recording_ = false;
+    bool camera_ble_connected_ = false;
 
     lv_obj_t* gallery_screen_ = nullptr;
     lv_obj_t* gallery_list_ = nullptr;
@@ -239,6 +258,7 @@ private:
     esp_timer_handle_t camera_preview_timer_ = nullptr;
     std::function<void()> camera_preview_callback_;
     std::atomic<bool> ai_print_generation_running_ = false;
+    std::atomic<bool> remote_selfie_active_ = false;
     bool remote_selfie_audio_suspended_ = false;
     int current_dialogue_scene_option_id_ = 0;
     bool magic_mirror_chat_started_ = false;
@@ -315,12 +335,12 @@ private:
     void ShowServerSwitchScreen();
     void ShowLanguageSwitchScreen();
     void ShowAboutScreen();
-    void SetCameraMode(CameraMode mode);
-    void UpdateCameraModeDisplay();
+    void UpdateRemoteSelfieControlStyles();
     void ExecuteCameraAction();
     void SuspendAudioForRemoteSelfie();
     void ResumeAudioAfterRemoteSelfie();
     void CleanupRemoteSelfie();
+    void RequestCameraBleStatusRefresh();
     void UpdateCameraBleStatus(bool connected);
     void ShowAiPrintListeningState();
     void ShowAiPrintGeneratingState();
@@ -400,6 +420,7 @@ private:
     std::string Get4gImeiForDisplay() const;
     std::string GetIpAddressForDisplay() const;
     std::string GetUuidForDisplay() const;
+    std::string BuildRemoteSelfieScenePayload() const;
     std::string BuildDialogueScenePayload(int option_id) const;
     const lv_image_dsc_t* LoadAssetImage(const char* asset_name);
     const char* GetMenuText(int option_id) const;
@@ -421,8 +442,10 @@ private:
     static void OnPhotoViewerGesture(lv_event_t* e);
     static void OnSettingsScreenGesture(lv_event_t* e);
     static void OnAboutScreenGesture(lv_event_t* e);
-    static void OnCameraModeButtonClicked(lv_event_t* e);
+    static void OnCameraControlButtonClicked(lv_event_t* e);
+    static void OnCameraDirectionButtonDraw(lv_event_t* e);
     static void OnCameraActionButtonClicked(lv_event_t* e);
+    static void OnCameraBleStatusAsync(void* user_data);
     static void OnSettingsItemClicked(lv_event_t* e);
     static void OnNetworkSwitchOptionClicked(lv_event_t* e);
     static void OnServerSwitchOptionClicked(lv_event_t* e);

@@ -31,3 +31,48 @@
 
 
 
+拍识万物：点击AI按键按钮没有作用
+遥控自拍：点击拍照可以，语音没反应，页面又回到初版那样了
+听写      ：听写内容页面显示只有9年级下，不完整。
+
+Guru Meditation Error: Core  0 panic'ed (LoadProhibited). Exception was unhandled.
+
+Core  0 register dump:
+PC      : 0x4211beb2  PS      : 0x00060730  A0      : 0x82119ce0  A1      : 0x3fcc1360  
+--- 0x4211beb2: os_memblock_put at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/porting/nimble/src/os_mempool.c:650
+A2      : 0x00000010  A3      : 0x3c4d570c  A4      : 0x00000002  A5      : 0x00000000  
+A6      : 0x00000000  A7      : 0x00000000  A8      : 0x00000000  A9      : 0x00000000  
+A10     : 0x00000010  A11     : 0x3c4d570c  A12     : 0x00000002  A13     : 0x3fcc1320  
+A14     : 0x3fcb6074  A15     : 0x00000000  SAR     : 0x00000018  EXCCAUSE: 0x0000001c  
+EXCVADDR: 0x0000001a  LBEG    : 0x400570e8  LEND    : 0x400570f3  LCOUNT  : 0x00000000  
+--- 0x400570e8: memset in ROM
+--- 0x400570f3: memset in ROM
+
+Guru Meditation Error: Core  0 panic'ed (LoadProhibited). Exception was unhandled.
+
+Core  0 register dump:
+PC      : 0x4211d476  PS      : 0x00060730  A0      : 0x8211b2a4  A1      : 0x3fccb2a0  
+--- 0x4211d476: os_memblock_put at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/porting/nimble/src/os_mempool.c:650
+A2      : 0x00000010  A3      : 0x3c3da178  A4      : 0x00000002  A5      : 0x00000001  
+A6      : 0x00000000  A7      : 0x00000000  A8      : 0x00000000  A9      : 0x00000000  
+A10     : 0x00000010  A11     : 0x3c3da178  A12     : 0x00000002  A13     : 0x00000000  
+A14     : 0x00000000  A15     : 0x00000000  SAR     : 0x00000008  EXCCAUSE: 0x0000001c  
+EXCVADDR: 0x0000001a  LBEG    : 0x400570e8  LEND    : 0x400570f3  LCOUNT  : 0x00000000  
+--- 0x400570e8: memset in ROM
+--- 0x400570f3: memset in ROM
+
+
+Backtrace: 0x4211d473:0x3fccb2a0 0x4211b2a1:0x3fccb2c0 0x421194da:0x3fccb2e0 0x42119574:0x3fccb410 0x42114f43:0x3fccb540 0x421152f5:0x3fccb570 0x421145c5:0x3fccb590 0x421f52a7:0x3fccb5b0 0x4037bc19:0x3fccb5d0 0x4203acde:0x3fccb5f0
+--- 0x4211d473: os_memblock_put at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/porting/nimble/src/os_mempool.c:626
+--- 0x4211b2a1: ble_gatts_connection_broken at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/nimble/host/src/ble_gatts.c:1698
+--- 0x421194da: ble_gap_conn_broken at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/nimble/host/src/ble_gap.c:1762
+--- 0x42119574: ble_gap_rx_disconn_complete at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/nimble/host/src/ble_gap.c:1848
+--- 0x42114f43: ble_hs_hci_evt_disconn_complete at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/nimble/host/src/ble_hs_hci_evt.c:553
+--- (inlined by) ble_hs_hci_evt_disconn_complete at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/nimble/host/src/ble_hs_hci_evt.c:440
+--- 0x421152f5: ble_hs_hci_evt_process at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/nimble/host/src/ble_hs_hci_evt.c:1835
+--- 0x421145c5: ble_hs_event_rx_hci_ev at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/nimble/host/src/ble_hs.c:655
+--- 0x421f52a7: npl_freertos_event_run at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/porting/npl/freertos/src/npl_os_freertos.c:536
+--- 0x4037bc19: ble_npl_event_run at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/porting/npl/freertos/include/nimble/nimble_npl_os.h:185
+--- (inlined by) nimble_port_run at /home/hao/esp/esp-idf/components/bt/host/nimble/nimble/porting/nimble/src/nimble_port.c:422
+--- 0x4203acde: (anonymous namespace)::BleHidHostTask(void*) at /home/hao/projects/xiaozhi-esp32-zzx-2/components/ble_hid/ble_hid.cc:171
+

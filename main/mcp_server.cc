@@ -16,6 +16,7 @@
 #include "settings.h"
 #include "lvgl_theme.h"
 #include "lvgl_display.h"
+#include "display/ui_display.h"
 #include "ble_hid.h"
 #include "boards/common/esp32_camera.h"
 #define TAG "MCP"
@@ -95,6 +96,88 @@ void McpServer::AddCommonTools() {
                 }
                 return false;
             });
+    }
+
+    auto* ui_display = dynamic_cast<UiLcdDisplay*>(display);
+    if (ui_display != nullptr) {
+        auto add_remote_selfie_tool =
+            [this, ui_display](const std::string& name,
+                               const std::string& description,
+                               UiLcdDisplay::RemoteSelfieAction action,
+                               const std::string& success_text) {
+                AddTool(
+                    name,
+                    description,
+                    PropertyList(),
+                    [ui_display, action, success_text](const PropertyList&) -> ReturnValue {
+                        if (!ui_display->IsRemoteSelfieActive()) {
+                            throw std::runtime_error("Remote selfie screen is not active");
+                        }
+                        if (!ui_display->ExecuteRemoteSelfieAction(action)) {
+                            throw std::runtime_error(
+                                "Remote selfie action failed. Please connect Bluetooth Xiaozhi-HID first.");
+                        }
+                        return success_text;
+                    });
+            };
+
+        AddTool(
+            "self.remote_selfie.enable_voice_control",
+            "Enable voice control guidance for remote selfie mode. "
+            "Use this when the user says 语音使能 or asks to enable voice control while on the remote selfie screen.",
+            PropertyList(),
+            [ui_display](const PropertyList&) -> ReturnValue {
+                if (!ui_display->IsRemoteSelfieActive()) {
+                    throw std::runtime_error("Remote selfie screen is not active");
+                }
+                return std::string("remote_selfie_voice_control_ready");
+            });
+
+        add_remote_selfie_tool(
+            "self.remote_selfie.swipe_up",
+            "Swipe the connected phone screen upward in remote selfie mode. "
+            "Only use while the remote selfie screen is active.",
+            UiLcdDisplay::RemoteSelfieAction::kSwipeUp,
+            "remote_selfie_swipe_up_sent");
+        add_remote_selfie_tool(
+            "self.remote_selfie.swipe_down",
+            "Swipe the connected phone screen downward in remote selfie mode. "
+            "Only use while the remote selfie screen is active.",
+            UiLcdDisplay::RemoteSelfieAction::kSwipeDown,
+            "remote_selfie_swipe_down_sent");
+        add_remote_selfie_tool(
+            "self.remote_selfie.swipe_left",
+            "Swipe the connected phone screen left in remote selfie mode. "
+            "Only use while the remote selfie screen is active.",
+            UiLcdDisplay::RemoteSelfieAction::kSwipeLeft,
+            "remote_selfie_swipe_left_sent");
+        add_remote_selfie_tool(
+            "self.remote_selfie.swipe_right",
+            "Swipe the connected phone screen right in remote selfie mode. "
+            "Only use while the remote selfie screen is active.",
+            UiLcdDisplay::RemoteSelfieAction::kSwipeRight,
+            "remote_selfie_swipe_right_sent");
+        add_remote_selfie_tool(
+            "self.remote_selfie.focus",
+            "Tap the center focus point on the connected phone screen in remote selfie mode. "
+            "Use this for focus, tap screen, or click center requests.",
+            UiLcdDisplay::RemoteSelfieAction::kFocus,
+            "remote_selfie_focus_sent");
+        add_remote_selfie_tool(
+            "self.remote_selfie.take_photo",
+            "Press the phone camera shutter once in remote selfie mode to take a photo.",
+            UiLcdDisplay::RemoteSelfieAction::kCapture,
+            "remote_selfie_take_photo_sent");
+        add_remote_selfie_tool(
+            "self.remote_selfie.start_recording",
+            "Press the phone camera shutter once in remote selfie mode to start recording.",
+            UiLcdDisplay::RemoteSelfieAction::kCapture,
+            "remote_selfie_start_recording_sent");
+        add_remote_selfie_tool(
+            "self.remote_selfie.stop_recording",
+            "Press the phone camera shutter once in remote selfie mode to stop or end recording.",
+            UiLcdDisplay::RemoteSelfieAction::kCapture,
+            "remote_selfie_stop_recording_sent");
     }
 
     auto camera = board.GetCamera();

@@ -16,6 +16,7 @@
 #include <esp_err.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
+#include <font_awesome.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <wifi_station.h>
@@ -25,6 +26,7 @@
 #include <cstring>
 #include <dirent.h>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -56,6 +58,10 @@ constexpr int kBackTargetSettings = 1;
 constexpr int kBackTargetCamera = 2;
 constexpr int kBackTargetGallery = 3;
 constexpr int kBackTargetWordDictation = 4;
+constexpr char kRemoteSelfieDeviceName[] = "Xiaozhi-HID";
+constexpr uint32_t kRemoteSelfiePanelColor = 0xF2F2F2;
+constexpr uint32_t kRemoteSelfieInactiveColor = 0x979797;
+constexpr uint32_t kRemoteSelfieActiveColor = 0x39A856;
 
 lv_dir_t GetGestureDirection() {
     lv_indev_t* indev = lv_indev_active();
@@ -279,6 +285,7 @@ const char* UiLcdDisplay::GetFeatureBackgroundAssetName(int option_id) const {
 
 bool UiLcdDisplay::IsDialogueSceneOption(int option_id) const {
     switch (option_id) {
+    case kAiAlarmOptionId:
     case kEncyclopediaOptionId:
     case kOralPracticeOptionId:
     case kAiMassageOptionId:
@@ -291,6 +298,35 @@ bool UiLcdDisplay::IsDialogueSceneOption(int option_id) const {
     }
 }
 
+std::string UiLcdDisplay::BuildRemoteSelfieScenePayload() const {
+    const std::string language = GetSelectedLanguageCode();
+    const std::string instructions =
+        "You are a remote selfie assistant for controlling a phone camera over Bluetooth HID. "
+        "Always reply in the current reply_language. "
+        "Only use these remote selfie tools while the remote selfie screen is active. "
+        "When the user says 语音使能 or asks to enable voice control, call self.remote_selfie.enable_voice_control. "
+        "When the user asks to swipe up, call self.remote_selfie.swipe_up. "
+        "When the user asks to swipe down, call self.remote_selfie.swipe_down. "
+        "When the user asks to swipe left, call self.remote_selfie.swipe_left. "
+        "When the user asks to swipe right, call self.remote_selfie.swipe_right. "
+        "When the user asks to focus, tap the screen, or tap the center button, call self.remote_selfie.focus. "
+        "When the user asks to take a photo, call self.remote_selfie.take_photo. "
+        "When the user asks to start recording, call self.remote_selfie.start_recording. "
+        "When the user asks to stop or end recording, call self.remote_selfie.stop_recording. "
+        "If a tool fails, tell the user to connect Bluetooth device Xiaozhi-HID first. "
+        "Keep replies short and action-oriented.";
+
+    std::ostringstream oss;
+    oss << "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{"
+        << "\"scene\":\"remote_selfie\","
+        << "\"language\":\"" << language << "\","
+        << "\"reply_language\":\"" << language << "\","
+        << "\"input_language\":\"" << language << "\","
+        << "\"mode\":\"ble_camera_remote\","
+        << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
+    return oss.str();
+}
+
 std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
     const char* scene = nullptr;
     const char* mode = nullptr;
@@ -298,6 +334,23 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
     std::string language = GetSelectedLanguageCode();
 
     switch (option_id) {
+    case kAiAlarmOptionId:
+        scene = "ai_alarm";
+        mode = "countdown_alarm";
+        instructions =
+            "You are an AI alarm assistant. "
+            "Always reply in the current reply_language. "
+            "When the user asks for a relative timer or reminder such as "
+            "'15分钟后提醒我上课', call self.ai_alarm.set_timer. "
+            "Convert the duration into delay_seconds. "
+            "Put the short reminder content into reminder. "
+            "When the user asks to cancel, stop, or clear the timer, call "
+            "self.ai_alarm.cancel_timer. "
+            "When the user asks whether a timer is active, call "
+            "self.ai_alarm.get_status. "
+            "Do not claim a timer is set unless the tool call succeeds. "
+            "After a tool call, reply briefly and clearly.";
+        break;
     case kEncyclopediaOptionId:
         scene = "encyclopedia";
         mode = "knowledge_guide";
@@ -777,7 +830,10 @@ void UiLcdDisplay::EnterDialogueScene(int option_id) {
     dialogue_scene_deadline_us_ = 0;
 
     ClearAiSceneMessages();
-    if (option_id == kAiPrintOptionId) {
+    if (option_id == kAiAlarmOptionId) {
+        ApplyFeatureVisual(option_id);
+        ShowAlarmPanel();
+    } else if (option_id == kAiPrintOptionId) {
         ApplyFeatureVisual(option_id);
         ShowAiPrintListeningState();
     } else {
@@ -990,66 +1046,104 @@ void UiLcdDisplay::InitializeCameraScreen() {
     lv_obj_set_style_bg_color(camera_screen_, lv_color_white(), 0);
     lv_obj_set_style_border_width(camera_screen_, 0, 0);
     lv_obj_set_style_pad_all(camera_screen_, 0, 0);
-    camera_ble_status_label_ = lv_label_create(camera_screen_);
-    lv_obj_set_size(camera_ble_status_label_, LV_HOR_RES, 30);
-    lv_obj_align(camera_ble_status_label_, LV_ALIGN_BOTTOM_MID, 0, -105);
+    lv_obj_set_scrollbar_mode(camera_screen_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(camera_screen_, LV_OBJ_FLAG_SCROLLABLE);
+
+    camera_card_ = lv_obj_create(camera_screen_);
+    lv_obj_set_size(camera_card_, LV_HOR_RES - 4, LV_VER_RES - 4);
+    lv_obj_align(camera_card_, LV_ALIGN_TOP_MID, 0, 2);
+    lv_obj_set_style_bg_color(camera_card_, lv_color_hex(kRemoteSelfiePanelColor), 0);
+    lv_obj_set_style_border_width(camera_card_, 0, 0);
+    lv_obj_set_style_radius(camera_card_, 26, 0);
+    lv_obj_set_style_pad_all(camera_card_, 0, 0);
+    lv_obj_set_scrollbar_mode(camera_card_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(camera_card_, LV_OBJ_FLAG_SCROLLABLE);
+
+    auto create_icon_button = [&](lv_coord_t width, lv_coord_t height, lv_align_t align, lv_coord_t x, lv_coord_t y) {
+        lv_obj_t* button = lv_btn_create(camera_card_);
+        lv_obj_set_size(button, width, height);
+        lv_obj_align(button, align, x, y);
+        lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(button, 0, 0);
+        lv_obj_set_style_shadow_width(button, 0, 0);
+        lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(button, lv_color_white(), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(button, LV_OPA_40, LV_STATE_PRESSED);
+        lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_ext_click_area(button, 8);
+        return button;
+    };
+
+    auto create_camera_shape = [](lv_obj_t* parent, lv_coord_t width, lv_coord_t height, lv_align_t align,
+                                  lv_coord_t x, lv_coord_t y, lv_coord_t radius) {
+        lv_obj_t* shape = lv_obj_create(parent);
+        lv_obj_set_size(shape, width, height);
+        lv_obj_align(shape, align, x, y);
+        lv_obj_set_style_pad_all(shape, 0, 0);
+        lv_obj_set_style_border_width(shape, 0, 0);
+        lv_obj_set_style_shadow_width(shape, 0, 0);
+        lv_obj_set_style_radius(shape, radius, 0);
+        lv_obj_clear_flag(shape, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_remove_flag(shape, LV_OBJ_FLAG_CLICKABLE);
+        return shape;
+    };
+
+    const RemoteSelfieAction direction_actions[kCameraDirectionButtonCount] = {
+        RemoteSelfieAction::kSwipeUp,
+        RemoteSelfieAction::kSwipeDown,
+        RemoteSelfieAction::kSwipeLeft,
+        RemoteSelfieAction::kSwipeRight,
+    };
+    const lv_align_t direction_aligns[kCameraDirectionButtonCount] = {
+        LV_ALIGN_TOP_MID,
+        LV_ALIGN_TOP_MID,
+        LV_ALIGN_TOP_MID,
+        LV_ALIGN_TOP_MID,
+    };
+    const lv_coord_t direction_x[kCameraDirectionButtonCount] = {0, 0, -44, 44};
+    const lv_coord_t direction_y[kCameraDirectionButtonCount] = {26, 114, 70, 70};
+
+    for (size_t i = 0; i < kCameraDirectionButtonCount; ++i) {
+        camera_control_data_[i] = CameraControlData{this, direction_actions[i]};
+        camera_direction_buttons_[i] = create_icon_button(52, 52, direction_aligns[i], direction_x[i], direction_y[i]);
+        lv_obj_set_user_data(camera_direction_buttons_[i], &camera_control_data_[i]);
+        lv_obj_add_event_cb(camera_direction_buttons_[i], OnCameraControlButtonClicked, LV_EVENT_CLICKED, nullptr);
+        lv_obj_add_event_cb(camera_direction_buttons_[i], OnCameraDirectionButtonDraw, LV_EVENT_DRAW_MAIN, nullptr);
+    }
+
+    camera_control_data_[4] = CameraControlData{this, RemoteSelfieAction::kFocus};
+    camera_focus_btn_ = create_icon_button(36, 36, LV_ALIGN_TOP_MID, 0, 78);
+    lv_obj_set_style_bg_opa(camera_focus_btn_, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(camera_focus_btn_, LV_OPA_80, LV_STATE_PRESSED);
+    lv_obj_set_user_data(camera_focus_btn_, &camera_control_data_[4]);
+    lv_obj_add_event_cb(camera_focus_btn_, OnCameraControlButtonClicked, LV_EVENT_CLICKED, nullptr);
+
+    camera_shutter_btn_ = create_icon_button(72, 44, LV_ALIGN_TOP_MID, 0, 158);
+    lv_obj_set_style_bg_opa(camera_shutter_btn_, LV_OPA_20, LV_STATE_PRESSED);
+    lv_obj_set_user_data(camera_shutter_btn_, this);
+    lv_obj_add_event_cb(camera_shutter_btn_, OnCameraActionButtonClicked, LV_EVENT_CLICKED, nullptr);
+    camera_shutter_body_ = create_camera_shape(camera_shutter_btn_, 50, 30, LV_ALIGN_BOTTOM_MID, 0, -1, 10);
+    camera_shutter_top_ = create_camera_shape(camera_shutter_btn_, 20, 8, LV_ALIGN_TOP_MID, -8, 5, 4);
+    camera_shutter_lens_ring_ = create_camera_shape(camera_shutter_body_, 22, 22, LV_ALIGN_CENTER, 0, 0, LV_RADIUS_CIRCLE);
+    lv_obj_set_style_bg_opa(camera_shutter_lens_ring_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(camera_shutter_lens_ring_, 3, 0);
+    lv_obj_set_style_border_color(camera_shutter_lens_ring_, lv_color_white(), 0);
+    camera_shutter_flash_dot_ = create_camera_shape(camera_shutter_body_, 7, 7, LV_ALIGN_RIGHT_MID, -8, -6, LV_RADIUS_CIRCLE);
+    lv_obj_set_style_bg_color(camera_shutter_flash_dot_, lv_color_white(), 0);
+
+    camera_ble_status_label_ = lv_label_create(camera_card_);
+    lv_obj_set_width(camera_ble_status_label_, LV_HOR_RES - 28);
+    lv_obj_align(camera_ble_status_label_, LV_ALIGN_TOP_MID, 0, 204);
     lv_obj_set_style_text_align(camera_ble_status_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(camera_ble_status_label_, lv_color_black(), 0);
     lv_obj_set_style_text_font(camera_ble_status_label_, lvgl_theme->text_font()->font(), 0);
-    lv_label_set_text(camera_ble_status_label_, "请连接xiaozhi-hid");
+    lv_label_set_text(camera_ble_status_label_, "");
 
-    lv_obj_t* camera_bar = lv_obj_create(camera_screen_);
-    lv_obj_set_size(camera_bar, LV_HOR_RES, 80);
-    lv_obj_align(camera_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(camera_bar, lvgl_theme->background_color(), 0);
-    lv_obj_set_style_border_width(camera_bar, 1, 0);
-    lv_obj_set_style_border_color(camera_bar, lvgl_theme->border_color(), 0);
-    lv_obj_set_style_radius(camera_bar, 0, 0);
-    lv_obj_set_scrollbar_mode(camera_bar, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_clear_flag(camera_bar, LV_OBJ_FLAG_SCROLLABLE);
-
-    camera_mode_btn_left_ = lv_btn_create(camera_bar);
-    lv_obj_set_size(camera_mode_btn_left_, kMenuIconOriginalSize, kMenuIconOriginalSize);
-    lv_obj_set_style_radius(camera_mode_btn_left_, kMenuIconOriginalSize / 2, 0);
-    lv_obj_set_style_bg_opa(camera_mode_btn_left_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(camera_mode_btn_left_, 0, 0);
-    lv_obj_align(camera_mode_btn_left_, LV_ALIGN_LEFT_MID, 40, 0);
-    lv_obj_clear_flag(camera_mode_btn_left_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t* video_icon_img = lv_image_create(camera_mode_btn_left_);
-    if (const lv_image_dsc_t* icon = LoadAssetImage("menu_settings.png"); icon != nullptr) {
-        lv_image_set_src(video_icon_img, icon);
-    }
-    lv_obj_center(video_icon_img);
-    lv_obj_set_user_data(camera_mode_btn_left_, this);
-    lv_obj_add_event_cb(camera_mode_btn_left_, OnCameraModeButtonClicked, LV_EVENT_CLICKED, nullptr);
-
-    camera_mode_btn_center_ = lv_btn_create(camera_bar);
-    lv_obj_set_size(camera_mode_btn_center_, 44, 44);
-    lv_obj_set_style_radius(camera_mode_btn_center_, 22, 0);
-    lv_obj_align(camera_mode_btn_center_, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_clear_flag(camera_mode_btn_center_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_user_data(camera_mode_btn_center_, this);
-    lv_obj_add_event_cb(camera_mode_btn_center_, OnCameraActionButtonClicked, LV_EVENT_CLICKED, nullptr);
-
-    camera_mode_btn_right_ = lv_btn_create(camera_bar);
-    lv_obj_set_size(camera_mode_btn_right_, kMenuIconOriginalSize, kMenuIconOriginalSize);
-    lv_obj_set_style_radius(camera_mode_btn_right_, kMenuIconOriginalSize / 2, 0);
-    lv_obj_set_style_bg_opa(camera_mode_btn_right_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(camera_mode_btn_right_, 0, 0);
-    lv_obj_align(camera_mode_btn_right_, LV_ALIGN_RIGHT_MID, -40, 0);
-    lv_obj_clear_flag(camera_mode_btn_right_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t* photo_icon_img = lv_image_create(camera_mode_btn_right_);
-    if (const lv_image_dsc_t* icon = LoadAssetImage("menu_remote_selfie.png"); icon != nullptr) {
-        lv_image_set_src(photo_icon_img, icon);
-    }
-    lv_obj_center(photo_icon_img);
-    lv_obj_set_user_data(camera_mode_btn_right_, this);
-    lv_obj_add_event_cb(camera_mode_btn_right_, OnCameraModeButtonClicked, LV_EVENT_CLICKED, nullptr);
-
-    current_camera_mode_ = CameraMode::kPhoto;
-    UpdateCameraModeDisplay();
     camera_back_button_data_ = BackButtonData{this, kBackTargetMainMenu};
     CreateBackButton(camera_screen_, &camera_back_button_data_);
+    camera_ble_connected_ = false;
+    lv_label_set_text(camera_ble_status_label_, "请连接蓝牙Xiaozhi-HID");
+    UpdateRemoteSelfieControlStyles();
 }
 
 void UiLcdDisplay::InitializeGallery() {
@@ -1349,16 +1443,24 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         if (camera_screen_ == nullptr) {
             InitializeCameraScreen();
         }
-        SuspendAudioForRemoteSelfie();
+        remote_selfie_active_ = true;
+        Application::GetInstance().SetSceneContextPayload(BuildRemoteSelfieScenePayload());
         auto& ble_hid = BleHid::GetInstance();
         ble_hid.SetScreenActive(true);
-        const bool ble_ready = ble_hid.Initialize();
-        ble_hid.OnConnectionStateChanged([this](bool connected) {
-            UpdateCameraBleStatus(connected);
+        bool ble_ready = ble_hid.Initialize();
+        if (!ble_ready) {
+            ESP_LOGW(TAG, "BLE HID init failed with audio active, retrying after suspending audio");
+            SuspendAudioForRemoteSelfie();
+            ble_ready = ble_hid.Initialize();
+        }
+        ble_hid.OnConnectionStateChanged([this](bool /*connected*/) {
+            RequestCameraBleStatusRefresh();
         });
         if (ble_ready) {
+            ResumeAudioAfterRemoteSelfie();
             UpdateCameraBleStatus(ble_hid.IsConnected());
         } else {
+            ResumeAudioAfterRemoteSelfie();
             ShowNotification("蓝牙启动失败，请返回重试", 2000);
             DisplayLockGuard lock(this);
             lv_label_set_text(camera_ble_status_label_, "蓝牙启动失败，请返回重试");
@@ -1479,73 +1581,76 @@ void UiLcdDisplay::ReturnToCameraScreen() {
     StartCameraPreview(200);
 }
 
-void UiLcdDisplay::SetCameraMode(CameraMode mode) {
-    if (current_camera_mode_ == mode) {
-        return;
-    }
-
-    current_camera_mode_ = mode;
-    UpdateCameraModeDisplay();
+bool UiLcdDisplay::IsRemoteSelfieActive() const {
+    return remote_selfie_active_.load();
 }
 
-void UiLcdDisplay::UpdateCameraModeDisplay() {
-    if (camera_mode_btn_center_ == nullptr) {
-        return;
+void UiLcdDisplay::UpdateRemoteSelfieControlStyles() {
+    const lv_color_t control_color = lv_color_hex(
+        camera_ble_connected_ ? kRemoteSelfieActiveColor : kRemoteSelfieInactiveColor);
+
+    for (auto* button : camera_direction_buttons_) {
+        if (button != nullptr) {
+            lv_obj_invalidate(button);
+        }
     }
 
-    DisplayLockGuard lock(this);
-
-    lv_obj_remove_style_all(camera_mode_btn_center_);
-    lv_obj_set_size(camera_mode_btn_center_, 44, 44);
-    lv_obj_align(camera_mode_btn_center_, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_radius(camera_mode_btn_center_, 22, 0);
-    lv_obj_clear_flag(camera_mode_btn_center_, LV_OBJ_FLAG_SCROLLABLE);
-
-    if (current_camera_mode_ == CameraMode::kPhoto) {
-        lv_obj_set_style_bg_color(camera_mode_btn_center_, lv_color_make(150, 150, 150), 0);
-        lv_obj_set_style_bg_opa(camera_mode_btn_center_, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(camera_mode_btn_center_, 0, 0);
-        lv_obj_set_style_border_opa(camera_mode_btn_center_, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_bg_color(camera_mode_btn_center_, lv_color_make(150, 150, 150), LV_STATE_PRESSED);
-        lv_obj_set_style_bg_opa(camera_mode_btn_center_, LV_OPA_COVER, LV_STATE_PRESSED);
-        return;
+    if (camera_focus_btn_ != nullptr) {
+        lv_obj_set_style_bg_color(camera_focus_btn_, control_color, 0);
+        lv_obj_set_style_bg_color(camera_focus_btn_, control_color, LV_STATE_PRESSED);
     }
 
-    lv_color_t record_color = lv_color_make(0, 0, 255);
-    if (is_recording_) {
-        lv_obj_set_style_bg_opa(camera_mode_btn_center_, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_color(camera_mode_btn_center_, record_color, 0);
-        lv_obj_set_style_border_width(camera_mode_btn_center_, 4, 0);
-        lv_obj_set_style_border_opa(camera_mode_btn_center_, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_opa(camera_mode_btn_center_, LV_OPA_TRANSP, LV_STATE_PRESSED);
-        lv_obj_set_style_border_color(camera_mode_btn_center_, record_color, LV_STATE_PRESSED);
-        lv_obj_set_style_border_width(camera_mode_btn_center_, 4, LV_STATE_PRESSED);
-        lv_obj_set_style_border_opa(camera_mode_btn_center_, LV_OPA_COVER, LV_STATE_PRESSED);
-    } else {
-        lv_obj_set_style_bg_color(camera_mode_btn_center_, record_color, 0);
-        lv_obj_set_style_bg_opa(camera_mode_btn_center_, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(camera_mode_btn_center_, 0, 0);
-        lv_obj_set_style_border_opa(camera_mode_btn_center_, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_bg_color(camera_mode_btn_center_, record_color, LV_STATE_PRESSED);
-        lv_obj_set_style_bg_opa(camera_mode_btn_center_, LV_OPA_COVER, LV_STATE_PRESSED);
+    if (camera_shutter_body_ != nullptr) {
+        lv_obj_set_style_bg_color(camera_shutter_body_, control_color, 0);
     }
+
+    if (camera_shutter_top_ != nullptr) {
+        lv_obj_set_style_bg_color(camera_shutter_top_, control_color, 0);
+    }
+
+    if (camera_shutter_lens_ring_ != nullptr) {
+        lv_obj_set_style_border_color(camera_shutter_lens_ring_, lv_color_white(), 0);
+    }
+
+    if (camera_shutter_flash_dot_ != nullptr) {
+        lv_obj_set_style_bg_color(camera_shutter_flash_dot_, lv_color_white(), 0);
+    }
+}
+
+bool UiLcdDisplay::ExecuteRemoteSelfieAction(RemoteSelfieAction action) {
+    auto& ble_hid = BleHid::GetInstance();
+    bool success = false;
+
+    switch (action) {
+    case RemoteSelfieAction::kSwipeUp:
+        success = ble_hid.SendSwipeUp();
+        break;
+    case RemoteSelfieAction::kSwipeDown:
+        success = ble_hid.SendSwipeDown();
+        break;
+    case RemoteSelfieAction::kSwipeLeft:
+        success = ble_hid.SendSwipeLeft();
+        break;
+    case RemoteSelfieAction::kSwipeRight:
+        success = ble_hid.SendSwipeRight();
+        break;
+    case RemoteSelfieAction::kFocus:
+        success = ble_hid.SendMouseClick();
+        break;
+    case RemoteSelfieAction::kCapture:
+        success = ble_hid.SendVolumeDown();
+        break;
+    }
+
+    if (!success) {
+        ESP_LOGW(TAG, "BLE HID not connected, remote selfie action=%d failed", static_cast<int>(action));
+    }
+
+    return success;
 }
 
 void UiLcdDisplay::ExecuteCameraAction() {
-    auto& ble_hid = BleHid::GetInstance();
-
-    if (current_camera_mode_ == CameraMode::kPhoto) {
-        if (!ble_hid.SendVolumeDown()) {
-            ESP_LOGW(TAG, "BLE HID not connected, cannot take photo");
-        }
-        return;
-    }
-
-    is_recording_ = !is_recording_;
-    if (!ble_hid.SendVolumeUp()) {
-        ESP_LOGW(TAG, "BLE HID not connected, cannot toggle recording");
-    }
-    UpdateCameraModeDisplay();
+    ExecuteRemoteSelfieAction(RemoteSelfieAction::kCapture);
 }
 
 void UiLcdDisplay::SuspendAudioForRemoteSelfie() {
@@ -1567,19 +1672,55 @@ void UiLcdDisplay::ResumeAudioAfterRemoteSelfie() {
 }
 
 void UiLcdDisplay::CleanupRemoteSelfie() {
+    remote_selfie_active_ = false;
+    auto& app = Application::GetInstance();
+    app.SetSceneContextPayload("");
+    app.ExitChatSession();
+
     auto& ble_hid = BleHid::GetInstance();
     ble_hid.OnConnectionStateChanged({});
     ble_hid.SetScreenActive(false);
     ble_hid.Deinitialize();
+    camera_ble_connected_ = false;
 }
 
-void UiLcdDisplay::UpdateCameraBleStatus(bool connected) {
+void UiLcdDisplay::RequestCameraBleStatusRefresh() {
     if (camera_ble_status_label_ == nullptr) {
         return;
     }
 
+    if (!Lock(5)) {
+        return;
+    }
+
+    lv_async_call(OnCameraBleStatusAsync, this);
+    Unlock();
+}
+
+void UiLcdDisplay::UpdateCameraBleStatus(bool connected) {
+    camera_ble_connected_ = connected;
+    if (camera_ble_status_label_ == nullptr) {
+        return;
+    }
+
+    char status_text[64];
+    snprintf(status_text,
+        sizeof(status_text),
+        connected ? "已连接蓝牙%s" : "请连接蓝牙%s",
+        kRemoteSelfieDeviceName);
+
     DisplayLockGuard lock(this);
-    lv_label_set_text(camera_ble_status_label_, connected ? "已连接" : "请连接xiaozhi-hid");
+    lv_label_set_text(camera_ble_status_label_, status_text);
+    UpdateRemoteSelfieControlStyles();
+}
+
+void UiLcdDisplay::OnCameraBleStatusAsync(void* user_data) {
+    auto* display = static_cast<UiLcdDisplay*>(user_data);
+    if (display == nullptr) {
+        return;
+    }
+
+    display->UpdateCameraBleStatus(BleHid::GetInstance().IsConnected());
 }
 
 void UiLcdDisplay::ShowGallery() {
@@ -1879,18 +2020,79 @@ void UiLcdDisplay::OnAboutScreenGesture(lv_event_t* e) {
     (void)e;
 }
 
-void UiLcdDisplay::OnCameraModeButtonClicked(lv_event_t* e) {
+void UiLcdDisplay::OnCameraControlButtonClicked(lv_event_t* e) {
     auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
-    auto* display = static_cast<UiLcdDisplay*>(lv_obj_get_user_data(target));
-    if (display == nullptr) {
+    auto* data = static_cast<CameraControlData*>(lv_obj_get_user_data(target));
+    if (data != nullptr && data->display != nullptr) {
+        data->display->ExecuteRemoteSelfieAction(data->action);
+    }
+}
+
+void UiLcdDisplay::OnCameraDirectionButtonDraw(lv_event_t* e) {
+    auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
+    auto* data = static_cast<CameraControlData*>(lv_obj_get_user_data(target));
+    if (target == nullptr || data == nullptr || data->display == nullptr) {
         return;
     }
 
-    if (target == display->camera_mode_btn_left_) {
-        display->SetCameraMode(CameraMode::kVideo);
-    } else if (target == display->camera_mode_btn_right_) {
-        display->SetCameraMode(CameraMode::kPhoto);
+    lv_layer_t* layer = lv_event_get_layer(e);
+    if (layer == nullptr) {
+        return;
     }
+
+    lv_area_t coords;
+    lv_obj_get_coords(target, &coords);
+
+    const lv_coord_t center_x = (coords.x1 + coords.x2) / 2;
+    const lv_coord_t center_y = (coords.y1 + coords.y2) / 2;
+    const lv_coord_t triangle_half_span = 19;
+    const lv_coord_t triangle_tip_offset = 15;
+    const lv_coord_t triangle_base_offset = 9;
+
+    lv_draw_triangle_dsc_t triangle;
+    lv_draw_triangle_dsc_init(&triangle);
+    triangle.color = lv_color_hex(
+        data->display->camera_ble_connected_ ? kRemoteSelfieActiveColor : kRemoteSelfieInactiveColor);
+    triangle.opa = lv_obj_has_state(target, LV_STATE_PRESSED) ? LV_OPA_70 : LV_OPA_COVER;
+
+    switch (data->action) {
+    case RemoteSelfieAction::kSwipeUp:
+        triangle.p[0].x = static_cast<lv_value_precise_t>(center_x - triangle_half_span);
+        triangle.p[0].y = static_cast<lv_value_precise_t>(center_y + triangle_base_offset);
+        triangle.p[1].x = static_cast<lv_value_precise_t>(center_x);
+        triangle.p[1].y = static_cast<lv_value_precise_t>(center_y - triangle_tip_offset);
+        triangle.p[2].x = static_cast<lv_value_precise_t>(center_x + triangle_half_span);
+        triangle.p[2].y = static_cast<lv_value_precise_t>(center_y + triangle_base_offset);
+        break;
+    case RemoteSelfieAction::kSwipeDown:
+        triangle.p[0].x = static_cast<lv_value_precise_t>(center_x - triangle_half_span);
+        triangle.p[0].y = static_cast<lv_value_precise_t>(center_y - triangle_base_offset);
+        triangle.p[1].x = static_cast<lv_value_precise_t>(center_x + triangle_half_span);
+        triangle.p[1].y = static_cast<lv_value_precise_t>(center_y - triangle_base_offset);
+        triangle.p[2].x = static_cast<lv_value_precise_t>(center_x);
+        triangle.p[2].y = static_cast<lv_value_precise_t>(center_y + triangle_tip_offset);
+        break;
+    case RemoteSelfieAction::kSwipeLeft:
+        triangle.p[0].x = static_cast<lv_value_precise_t>(center_x + triangle_base_offset);
+        triangle.p[0].y = static_cast<lv_value_precise_t>(center_y - triangle_half_span);
+        triangle.p[1].x = static_cast<lv_value_precise_t>(center_x - triangle_tip_offset);
+        triangle.p[1].y = static_cast<lv_value_precise_t>(center_y);
+        triangle.p[2].x = static_cast<lv_value_precise_t>(center_x + triangle_base_offset);
+        triangle.p[2].y = static_cast<lv_value_precise_t>(center_y + triangle_half_span);
+        break;
+    case RemoteSelfieAction::kSwipeRight:
+        triangle.p[0].x = static_cast<lv_value_precise_t>(center_x - triangle_base_offset);
+        triangle.p[0].y = static_cast<lv_value_precise_t>(center_y - triangle_half_span);
+        triangle.p[1].x = static_cast<lv_value_precise_t>(center_x + triangle_tip_offset);
+        triangle.p[1].y = static_cast<lv_value_precise_t>(center_y);
+        triangle.p[2].x = static_cast<lv_value_precise_t>(center_x - triangle_base_offset);
+        triangle.p[2].y = static_cast<lv_value_precise_t>(center_y + triangle_half_span);
+        break;
+    default:
+        return;
+    }
+
+    lv_draw_triangle(layer, &triangle);
 }
 
 void UiLcdDisplay::OnCameraActionButtonClicked(lv_event_t* e) {

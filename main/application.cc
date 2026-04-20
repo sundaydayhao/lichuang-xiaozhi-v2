@@ -13,12 +13,20 @@
 #include "settings.h"
 
 #include <cstring>
+#include <algorithm>
+#include <ctime>
+#include <stdexcept>
 #include <esp_log.h>
+#include <esp_err.h>
 #include <cJSON.h>
 #include <driver/gpio.h>
 #include <arpa/inet.h>
 #include <font_awesome.h>
+#include <cctype>
 
+#ifdef TAG
+#undef TAG
+#endif
 #define TAG "Application"
 
 
@@ -36,6 +44,42 @@ static const char* const STATE_STRINGS[] = {
     "fatal_error",
     "invalid_state"
 };
+
+namespace {
+
+std::string TrimCopy(const std::string& text) {
+    size_t start = 0;
+    while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start]))) {
+        ++start;
+    }
+
+    size_t end = text.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
+        --end;
+    }
+
+    return text.substr(start, end - start);
+}
+
+std::string FormatAiAlarmDuration(int delay_seconds) {
+    const int hours = delay_seconds / 3600;
+    const int minutes = (delay_seconds % 3600) / 60;
+    const int seconds = delay_seconds % 60;
+
+    std::string text;
+    if (hours > 0) {
+        text += std::to_string(hours) + "小时";
+    }
+    if (minutes > 0) {
+        text += std::to_string(minutes) + "分钟";
+    }
+    if (seconds > 0 || text.empty()) {
+        text += std::to_string(seconds) + "秒";
+    }
+    return text;
+}
+
+} // namespace
 
 Application::Application() {
     event_group_ = xEventGroupCreate();
@@ -61,9 +105,29 @@ Application::Application() {
         .skip_unhandled_events = true
     };
     esp_timer_create(&clock_timer_args, &clock_timer_handle_);
+
+    esp_timer_create_args_t ai_alarm_repeat_timer_args = {
+        .callback = [](void* arg) {
+            auto* app = static_cast<Application*>(arg);
+            if (app != nullptr) {
+                app->Schedule([app]() {
+                    app->HandleAiAlarmRepeat();
+                });
+            }
+        },
+        .arg = this,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "ai_alarm_repeat",
+        .skip_unhandled_events = true,
+    };
+    esp_timer_create(&ai_alarm_repeat_timer_args, &ai_alarm_repeat_timer_handle_);
 }
 
 Application::~Application() {
+    if (ai_alarm_repeat_timer_handle_ != nullptr) {
+        esp_timer_stop(ai_alarm_repeat_timer_handle_);
+        esp_timer_delete(ai_alarm_repeat_timer_handle_);
+    }
     if (clock_timer_handle_ != nullptr) {
         esp_timer_stop(clock_timer_handle_);
         esp_timer_delete(clock_timer_handle_);
@@ -746,6 +810,7 @@ void Application::MainEventLoop() {
             clock_ticks_++;
             auto display = Board::GetInstance().GetDisplay();
             display->UpdateStatusBar();
+            CheckAiAlarmOnClockTick();
         
             // Print the debug info every 10 seconds
             if (clock_ticks_ % 10 == 0) {
@@ -1007,6 +1072,10 @@ void Application::WakeWordInvoke(const std::string& wake_word) {
 }
 
 bool Application::CanEnterSleepMode() {
+    if (HasAiAlarmRunning()) {
+        return false;
+    }
+
     if (device_state_ != kDeviceStateIdle) {
         return false;
     }
@@ -1036,6 +1105,173 @@ void Application::SendMcpMessage(const std::string& payload) {
             protocol_->SendMcpMessage(payload);
         });
     }
+}
+
+std::string Application::SetAiAlarmTimer(int delay_seconds, const std::string& reminder) {
+    if (delay_seconds <= 0) {
+        throw std::runtime_error("delay_seconds must be greater than 0");
+    }
+
+    const std::string trimmed_reminder = TrimCopy(reminder);
+    const std::string normalized_reminder = trimmed_reminder.empty() ? "时间到了" : trimmed_reminder;
+    const time_t now = time(nullptr);
+
+    {
+        std::lock_guard<std::mutex> lock(ai_alarm_mutex_);
+        StopAiAlarmRepeatTimerLocked();
+        ai_alarm_active_ = true;
+        ai_alarm_ringing_ = false;
+        ai_alarm_target_time_ = now + delay_seconds;
+        ai_alarm_initial_seconds_ = delay_seconds;
+        ai_alarm_reminder_ = normalized_reminder;
+        ai_alarm_repeat_remaining_ = 0;
+    }
+
+    return "已设置AI闹钟，" + FormatAiAlarmDuration(delay_seconds) + "后提醒你：" + normalized_reminder;
+}
+
+std::string Application::CancelAiAlarmTimer() {
+    std::lock_guard<std::mutex> lock(ai_alarm_mutex_);
+    if (!ai_alarm_active_ && !ai_alarm_ringing_) {
+        return "当前没有正在运行的AI闹钟";
+    }
+
+    ClearAiAlarmLocked();
+    return "已取消当前AI闹钟";
+}
+
+Application::AiAlarmSnapshot Application::GetAiAlarmSnapshot() const {
+    std::lock_guard<std::mutex> lock(ai_alarm_mutex_);
+
+    AiAlarmSnapshot snapshot;
+    snapshot.active = ai_alarm_active_;
+    snapshot.ringing = ai_alarm_ringing_;
+    snapshot.total_seconds = ai_alarm_initial_seconds_;
+    snapshot.target_time = ai_alarm_target_time_;
+    snapshot.reminder = ai_alarm_reminder_;
+    snapshot.pending_repeats = ai_alarm_repeat_remaining_;
+
+    if (ai_alarm_active_) {
+        const time_t now = time(nullptr);
+        snapshot.remaining_seconds = std::max(0, static_cast<int>(ai_alarm_target_time_ - now));
+    } else {
+        snapshot.remaining_seconds = 0;
+    }
+
+    return snapshot;
+}
+
+bool Application::HasAiAlarmRunning() const {
+    std::lock_guard<std::mutex> lock(ai_alarm_mutex_);
+    return ai_alarm_active_ || ai_alarm_ringing_;
+}
+
+void Application::CheckAiAlarmOnClockTick() {
+    bool should_trigger = false;
+    {
+        std::lock_guard<std::mutex> lock(ai_alarm_mutex_);
+        should_trigger = ai_alarm_active_ && !ai_alarm_ringing_ && time(nullptr) >= ai_alarm_target_time_;
+    }
+
+    if (should_trigger) {
+        TriggerAiAlarm();
+    }
+}
+
+void Application::TriggerAiAlarm() {
+    std::string reminder;
+    {
+        std::lock_guard<std::mutex> lock(ai_alarm_mutex_);
+        if (!ai_alarm_active_ || ai_alarm_ringing_) {
+            return;
+        }
+
+        ai_alarm_active_ = false;
+        ai_alarm_ringing_ = true;
+        ai_alarm_repeat_remaining_ = 5;
+        reminder = ai_alarm_reminder_;
+    }
+
+    ESP_LOGI(TAG, "AI alarm triggered: %s", reminder.c_str());
+
+    if (audio_service_suspended_for_feature_) {
+        ResumeAudioAfterFeature();
+    }
+
+    if (protocol_ != nullptr && protocol_->IsAudioChannelOpened()) {
+        protocol_->CloseAudioChannel();
+    }
+
+    auto display = Board::GetInstance().GetDisplay();
+    const std::string notification = reminder.empty() ? "AI闹钟时间到了" : ("提醒：" + reminder);
+    display->ShowNotification(notification.c_str(), 4000);
+
+    HandleAiAlarmRepeat();
+
+    std::lock_guard<std::mutex> lock(ai_alarm_mutex_);
+    if (ai_alarm_ringing_ && ai_alarm_repeat_remaining_ > 0 && ai_alarm_repeat_timer_handle_ != nullptr) {
+        esp_timer_stop(ai_alarm_repeat_timer_handle_);
+        ESP_ERROR_CHECK(esp_timer_start_periodic(ai_alarm_repeat_timer_handle_, 2500 * 1000));
+    }
+}
+
+void Application::HandleAiAlarmRepeat() {
+    std::string reminder;
+    bool clear_after_play = false;
+    {
+        std::lock_guard<std::mutex> lock(ai_alarm_mutex_);
+        if (!ai_alarm_ringing_) {
+            StopAiAlarmRepeatTimerLocked();
+            return;
+        }
+
+        if (ai_alarm_repeat_remaining_ <= 0) {
+            ClearAiAlarmLocked();
+            return;
+        }
+
+        reminder = ai_alarm_reminder_;
+        --ai_alarm_repeat_remaining_;
+        clear_after_play = ai_alarm_repeat_remaining_ <= 0;
+        if (clear_after_play) {
+            StopAiAlarmRepeatTimerLocked();
+        }
+    }
+
+    if (protocol_ != nullptr && protocol_->IsAudioChannelOpened()) {
+        protocol_->CloseAudioChannel();
+    }
+
+    PlaySound(Lang::Sounds::OGG_POPUP);
+    auto display = Board::GetInstance().GetDisplay();
+    const std::string notification = reminder.empty() ? "AI闹钟时间到了" : ("提醒：" + reminder);
+    display->ShowNotification(notification.c_str(), 2500);
+
+    if (clear_after_play) {
+        std::lock_guard<std::mutex> lock(ai_alarm_mutex_);
+        ClearAiAlarmLocked();
+    }
+}
+
+void Application::StopAiAlarmRepeatTimerLocked() {
+    if (ai_alarm_repeat_timer_handle_ == nullptr) {
+        return;
+    }
+
+    esp_err_t err = esp_timer_stop(ai_alarm_repeat_timer_handle_);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG, "Failed to stop AI alarm repeat timer: %s", esp_err_to_name(err));
+    }
+}
+
+void Application::ClearAiAlarmLocked() {
+    StopAiAlarmRepeatTimerLocked();
+    ai_alarm_active_ = false;
+    ai_alarm_ringing_ = false;
+    ai_alarm_target_time_ = 0;
+    ai_alarm_initial_seconds_ = 0;
+    ai_alarm_reminder_.clear();
+    ai_alarm_repeat_remaining_ = 0;
 }
 
 void Application::SetSceneContextPayload(const std::string& payload) {

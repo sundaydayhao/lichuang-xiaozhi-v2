@@ -10,6 +10,7 @@
 #include <mutex>
 #include <deque>
 #include <memory>
+#include <vector>
 
 #include "protocol.h"
 #include "ota.h"
@@ -34,6 +35,16 @@ enum AecMode {
 
 class Application {
 public:
+    struct AiAlarmSnapshot {
+        bool active = false;
+        bool ringing = false;
+        int total_seconds = 0;
+        int remaining_seconds = 0;
+        time_t target_time = 0;
+        std::string reminder;
+        int pending_repeats = 0;
+    };
+
     static Application& GetInstance() {
         static Application instance;
         return instance;
@@ -67,6 +78,10 @@ public:
     AecMode GetAecMode() const { return aec_mode_; }
     void PlaySound(const std::string_view& sound);
     AudioService& GetAudioService() { return audio_service_; }
+    std::string SetAiAlarmTimer(int delay_seconds, const std::string& reminder);
+    std::string CancelAiAlarmTimer();
+    AiAlarmSnapshot GetAiAlarmSnapshot() const;
+    bool HasAiAlarmRunning() const;
 
 private:
     Application();
@@ -92,6 +107,14 @@ private:
     bool audio_service_suspended_for_feature_ = false;
     std::string scene_context_payload_;
     bool scene_context_payload_sent_ = false;
+    mutable std::mutex ai_alarm_mutex_;
+    bool ai_alarm_active_ = false;
+    bool ai_alarm_ringing_ = false;
+    time_t ai_alarm_target_time_ = 0;
+    int ai_alarm_initial_seconds_ = 0;
+    std::string ai_alarm_reminder_;
+    int ai_alarm_repeat_remaining_ = 0;
+    esp_timer_handle_t ai_alarm_repeat_timer_handle_ = nullptr;
 
     void OnWakeWordDetected();
     void ApplyAudioBehaviorForState(DeviceState state);
@@ -99,6 +122,11 @@ private:
     void CheckAssetsVersion();
     void ShowActivationCode(const std::string& code, const std::string& message);
     void SetListeningMode(ListeningMode mode);
+    void CheckAiAlarmOnClockTick();
+    void TriggerAiAlarm();
+    void HandleAiAlarmRepeat();
+    void StopAiAlarmRepeatTimerLocked();
+    void ClearAiAlarmLocked();
 };
 
 

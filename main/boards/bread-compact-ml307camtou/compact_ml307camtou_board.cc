@@ -336,6 +336,48 @@ private:
     void InitializeTools() {
         static LampController lamp(LAMP_GPIO);
         static Green_Lamp lamp_G(BOT_PWM);
+        auto& mcp_server = McpServer::GetInstance();
+
+        mcp_server.AddTool(
+            "self.ai_alarm.set_timer",
+            "Set a countdown AI alarm. Convert requests like '15 minutes later remind me to go to class' "
+            "into delay_seconds and a short reminder string.",
+            PropertyList({
+                Property("delay_seconds", kPropertyTypeInteger, 1, 24 * 60 * 60),
+                Property("reminder", kPropertyTypeString, std::string(""))
+            }),
+            [](const PropertyList& properties) -> ReturnValue {
+                auto& app = Application::GetInstance();
+                return app.SetAiAlarmTimer(
+                    properties["delay_seconds"].value<int>(),
+                    properties["reminder"].value<std::string>());
+            });
+
+        mcp_server.AddTool(
+            "self.ai_alarm.cancel_timer",
+            "Cancel the currently running AI alarm timer.",
+            PropertyList(),
+            [](const PropertyList&) -> ReturnValue {
+                auto& app = Application::GetInstance();
+                return app.CancelAiAlarmTimer();
+            });
+
+        mcp_server.AddTool(
+            "self.ai_alarm.get_status",
+            "Get the current AI alarm timer status, including remaining seconds and reminder text.",
+            PropertyList(),
+            [](const PropertyList&) -> ReturnValue {
+                auto snapshot = Application::GetInstance().GetAiAlarmSnapshot();
+                cJSON* json = cJSON_CreateObject();
+                cJSON_AddBoolToObject(json, "active", snapshot.active);
+                cJSON_AddBoolToObject(json, "ringing", snapshot.ringing);
+                cJSON_AddNumberToObject(json, "remaining_seconds", snapshot.remaining_seconds);
+                cJSON_AddNumberToObject(json, "total_seconds", snapshot.total_seconds);
+                cJSON_AddNumberToObject(json, "target_time", static_cast<double>(snapshot.target_time));
+                cJSON_AddStringToObject(json, "reminder", snapshot.reminder.c_str());
+                cJSON_AddNumberToObject(json, "pending_repeats", snapshot.pending_repeats);
+                return json;
+            });
     }
 
     bool TryWifiConnection() {

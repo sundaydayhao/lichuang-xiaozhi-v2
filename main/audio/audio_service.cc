@@ -1,6 +1,7 @@
 #include "audio_service.h"
 #include <esp_log.h>
 #include <cstring>
+#include <freertos/idf_additions.h>
 
 #if CONFIG_USE_AUDIO_PROCESSOR
 #include "processors/afe_audio_processor.h"
@@ -8,12 +9,8 @@
 #include "processors/no_audio_processor.h"
 #endif
 
-#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32P4
 #include "wake_words/afe_wake_word.h"
 #include "wake_words/custom_wake_word.h"
-#else
-#include "wake_words/esp_wake_word.h"
-#endif
 
 #define TAG "AudioService"
 
@@ -79,42 +76,80 @@ void AudioService::Start() {
 
     esp_timer_start_periodic(audio_power_timer_, 1000000);
 
+    auto audio_input_task = [](void* arg) {
+        AudioService* audio_service = static_cast<AudioService*>(arg);
+        audio_service->AudioInputTask();
+        audio_service->audio_input_task_handle_ = nullptr;
+#if CONFIG_SPIRAM
+        vTaskDeleteWithCaps(nullptr);
+#else
+        vTaskDelete(nullptr);
+#endif
+    };
+
+    auto audio_output_task = [](void* arg) {
+        AudioService* audio_service = static_cast<AudioService*>(arg);
+        audio_service->AudioOutputTask();
+        audio_service->audio_output_task_handle_ = nullptr;
+#if CONFIG_SPIRAM
+        vTaskDeleteWithCaps(nullptr);
+#else
+        vTaskDelete(nullptr);
+#endif
+    };
+
+    auto opus_codec_task = [](void* arg) {
+        AudioService* audio_service = static_cast<AudioService*>(arg);
+        audio_service->OpusCodecTask();
+        audio_service->opus_codec_task_handle_ = nullptr;
+#if CONFIG_SPIRAM
+        vTaskDeleteWithCaps(nullptr);
+#else
+        vTaskDelete(nullptr);
+#endif
+    };
+
 #if CONFIG_USE_AUDIO_PROCESSOR
     /* Start the audio input task */
-    xTaskCreatePinnedToCore([](void* arg) {
-        AudioService* audio_service = (AudioService*)arg;
-        audio_service->AudioInputTask();
-        vTaskDelete(NULL);
-    }, "audio_input", 2048 * 3, this, 8, &audio_input_task_handle_, 0);
+    #if CONFIG_SPIRAM
+    xTaskCreatePinnedToCoreWithCaps(audio_input_task, "audio_input", 2048 * 3, this, 8, &audio_input_task_handle_, 0,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    #else
+    xTaskCreatePinnedToCore(audio_input_task, "audio_input", 2048 * 3, this, 8, &audio_input_task_handle_, 0);
+    #endif
 
     /* Start the audio output task */
-    xTaskCreate([](void* arg) {
-        AudioService* audio_service = (AudioService*)arg;
-        audio_service->AudioOutputTask();
-        vTaskDelete(NULL);
-    }, "audio_output", 2048 * 2, this, 4, &audio_output_task_handle_);
+    #if CONFIG_SPIRAM
+    xTaskCreateWithCaps(audio_output_task, "audio_output", 2048 * 2, this, 4, &audio_output_task_handle_,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    #else
+    xTaskCreate(audio_output_task, "audio_output", 2048 * 2, this, 4, &audio_output_task_handle_);
+    #endif
 #else
     /* Start the audio input task */
-    xTaskCreate([](void* arg) {
-        AudioService* audio_service = (AudioService*)arg;
-        audio_service->AudioInputTask();
-        vTaskDelete(NULL);
-    }, "audio_input", 2048 * 2, this, 8, &audio_input_task_handle_);
+    #if CONFIG_SPIRAM
+    xTaskCreateWithCaps(audio_input_task, "audio_input", 2048 * 2, this, 8, &audio_input_task_handle_,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    #else
+    xTaskCreate(audio_input_task, "audio_input", 2048 * 2, this, 8, &audio_input_task_handle_);
+    #endif
 
     /* Start the audio output task */
-    xTaskCreate([](void* arg) {
-        AudioService* audio_service = (AudioService*)arg;
-        audio_service->AudioOutputTask();
-        vTaskDelete(NULL);
-    }, "audio_output", 2048, this, 4, &audio_output_task_handle_);
+    #if CONFIG_SPIRAM
+    xTaskCreateWithCaps(audio_output_task, "audio_output", 2048, this, 4, &audio_output_task_handle_,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    #else
+    xTaskCreate(audio_output_task, "audio_output", 2048, this, 4, &audio_output_task_handle_);
+    #endif
 #endif
 
     /* Start the opus codec task */
-    xTaskCreate([](void* arg) {
-        AudioService* audio_service = (AudioService*)arg;
-        audio_service->OpusCodecTask();
-        vTaskDelete(NULL);
-    }, "opus_codec", 2048 * 13, this, 2, &opus_codec_task_handle_);
+    #if CONFIG_SPIRAM
+    xTaskCreateWithCaps(opus_codec_task, "opus_codec", 2048 * 13, this, 2, &opus_codec_task_handle_,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    #else
+    xTaskCreate(opus_codec_task, "opus_codec", 2048 * 13, this, 2, &opus_codec_task_handle_);
+    #endif
 }
 
 void AudioService::Stop() {
@@ -684,7 +719,6 @@ void AudioService::CheckAndUpdateAudioPowerState() {
 void AudioService::SetModelsList(srmodel_list_t* models_list) {
     models_list_ = models_list;
 
-#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32P4
     if (esp_srmodel_filter(models_list_, ESP_MN_PREFIX, NULL) != nullptr) {
         wake_word_ = std::make_unique<CustomWakeWord>();
     } else if (esp_srmodel_filter(models_list_, ESP_WN_PREFIX, NULL) != nullptr) {
@@ -692,13 +726,6 @@ void AudioService::SetModelsList(srmodel_list_t* models_list) {
     } else {
         wake_word_ = nullptr;
     }
-#else
-    if (esp_srmodel_filter(models_list_, ESP_WN_PREFIX, NULL) != nullptr) {
-        wake_word_ = std::make_unique<EspWakeWord>();
-    } else {
-        wake_word_ = nullptr;
-    }
-#endif
 
     if (wake_word_) {
         wake_word_->OnWakeWordDetected([this](const std::string& wake_word) {
@@ -710,9 +737,5 @@ void AudioService::SetModelsList(srmodel_list_t* models_list) {
 }
 
 bool AudioService::IsAfeWakeWord() {
-#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32P4
     return wake_word_ != nullptr && dynamic_cast<AfeWakeWord*>(wake_word_.get()) != nullptr;
-#else
-    return false;
-#endif
 }
