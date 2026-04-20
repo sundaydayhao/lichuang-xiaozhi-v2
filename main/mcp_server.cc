@@ -103,7 +103,7 @@ void McpServer::AddCommonTools() {
         auto add_remote_selfie_tool =
             [this, ui_display](const std::string& name,
                                const std::string& description,
-                               UiLcdDisplay::RemoteSelfieAction action,
+                               UiMenuRemoteSelfieAction action,
                                const std::string& success_text) {
                 AddTool(
                     name,
@@ -137,46 +137,46 @@ void McpServer::AddCommonTools() {
             "self.remote_selfie.swipe_up",
             "Swipe the connected phone screen upward in remote selfie mode. "
             "Only use while the remote selfie screen is active.",
-            UiLcdDisplay::RemoteSelfieAction::kSwipeUp,
+            UiMenuRemoteSelfieAction::kSwipeUp,
             "remote_selfie_swipe_up_sent");
         add_remote_selfie_tool(
             "self.remote_selfie.swipe_down",
             "Swipe the connected phone screen downward in remote selfie mode. "
             "Only use while the remote selfie screen is active.",
-            UiLcdDisplay::RemoteSelfieAction::kSwipeDown,
+            UiMenuRemoteSelfieAction::kSwipeDown,
             "remote_selfie_swipe_down_sent");
         add_remote_selfie_tool(
             "self.remote_selfie.swipe_left",
             "Swipe the connected phone screen left in remote selfie mode. "
             "Only use while the remote selfie screen is active.",
-            UiLcdDisplay::RemoteSelfieAction::kSwipeLeft,
+            UiMenuRemoteSelfieAction::kSwipeLeft,
             "remote_selfie_swipe_left_sent");
         add_remote_selfie_tool(
             "self.remote_selfie.swipe_right",
             "Swipe the connected phone screen right in remote selfie mode. "
             "Only use while the remote selfie screen is active.",
-            UiLcdDisplay::RemoteSelfieAction::kSwipeRight,
+            UiMenuRemoteSelfieAction::kSwipeRight,
             "remote_selfie_swipe_right_sent");
         add_remote_selfie_tool(
             "self.remote_selfie.focus",
             "Tap the center focus point on the connected phone screen in remote selfie mode. "
             "Use this for focus, tap screen, or click center requests.",
-            UiLcdDisplay::RemoteSelfieAction::kFocus,
+            UiMenuRemoteSelfieAction::kFocus,
             "remote_selfie_focus_sent");
         add_remote_selfie_tool(
             "self.remote_selfie.take_photo",
             "Press the phone camera shutter once in remote selfie mode to take a photo.",
-            UiLcdDisplay::RemoteSelfieAction::kCapture,
+            UiMenuRemoteSelfieAction::kCapture,
             "remote_selfie_take_photo_sent");
         add_remote_selfie_tool(
             "self.remote_selfie.start_recording",
             "Press the phone camera shutter once in remote selfie mode to start recording.",
-            UiLcdDisplay::RemoteSelfieAction::kCapture,
+            UiMenuRemoteSelfieAction::kCapture,
             "remote_selfie_start_recording_sent");
         add_remote_selfie_tool(
             "self.remote_selfie.stop_recording",
             "Press the phone camera shutter once in remote selfie mode to stop or end recording.",
-            UiLcdDisplay::RemoteSelfieAction::kCapture,
+            UiMenuRemoteSelfieAction::kCapture,
             "remote_selfie_stop_recording_sent");
     }
 

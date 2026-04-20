@@ -390,7 +390,7 @@ std::string UiMenuAiPrint::BuildScenePayload(const UiLcdDisplay& display) {
 
 bool UiLcdDisplay::HandleFeatureSpeechRecognized(const std::string& text) {
     MarkDialogueScenePromptCaptured();
-    if (HandleRemoteSelfieSpeechRecognized(text)) {
+    if (UiMenuRemoteSelfie::HandleSpeechRecognized(*this, text)) {
         return true;
     }
     return UiMenuAiPrint::HandleSpeechRecognized(*this, text);

@@ -4,6 +4,7 @@
 #include "lcd_display.h"
 #include "ui_menu_ai_alarm.h"
 #include "ui_menu_ai_print.h"
+#include "ui_menu_remote_selfie.h"
 #include "ui_menu_setting.h"
 #include "device_state.h"
 
@@ -20,17 +21,6 @@
 class UiLcdDisplay : public SpiLcdDisplay {
 public:
     static constexpr size_t kMenuItemCount = 12;
-    static constexpr size_t kCameraDirectionButtonCount = 4;
-    static constexpr size_t kCameraControlCount = 6;
-
-    enum class RemoteSelfieAction {
-        kSwipeUp = 0,
-        kSwipeDown,
-        kSwipeLeft,
-        kSwipeRight,
-        kFocus,
-        kCapture,
-    };
 
     UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                  int width, int height, int offset_x, int offset_y,
@@ -43,11 +33,12 @@ public:
     void SetCameraPreviewCallback(std::function<void()> callback);
     bool HandleFeatureSpeechRecognized(const std::string& text);
     bool IsRemoteSelfieActive() const;
-    bool ExecuteRemoteSelfieAction(RemoteSelfieAction action);
+    bool ExecuteRemoteSelfieAction(UiMenuRemoteSelfieAction action);
 
 private:
     friend class UiMenuAiPrint;
     friend class UiMenuAiAlarm;
+    friend class UiMenuRemoteSelfie;
     friend class UiMenuSetting;
 
     struct MenuButtonData {
@@ -55,11 +46,6 @@ private:
         int option_id = 0;
         lv_point_t press_point = {0, 0};
         bool moved = false;
-    };
-
-    struct CameraControlData {
-        UiLcdDisplay* display = nullptr;
-        RemoteSelfieAction action = RemoteSelfieAction::kSwipeUp;
     };
 
     struct WordDictationWord {
@@ -136,26 +122,12 @@ private:
     std::array<MenuButtonData, kMenuItemCount> menu_button_data_ = {};
 
     UiMenuSettingState menu_setting_ = {};
+    UiMenuRemoteSelfieState remote_selfie_ = {};
     UiBackButtonData ai_back_button_data_ = {};
-    UiBackButtonData camera_back_button_data_ = {};
     UiBackButtonData gallery_back_button_data_ = {};
     UiBackButtonData photo_viewer_back_button_data_ = {};
     UiBackButtonData word_dictation_back_button_data_ = {};
     UiBackButtonData sleep_music_back_button_data_ = {};
-
-    lv_obj_t* camera_screen_ = nullptr;
-    lv_obj_t* camera_card_ = nullptr;
-    lv_obj_t* camera_focus_btn_ = nullptr;
-    lv_obj_t* camera_shutter_btn_ = nullptr;
-    lv_obj_t* camera_shutter_body_ = nullptr;
-    lv_obj_t* camera_shutter_top_ = nullptr;
-    lv_obj_t* camera_shutter_lens_ring_ = nullptr;
-    lv_obj_t* camera_shutter_flash_dot_ = nullptr;
-    std::array<lv_obj_t*, kCameraDirectionButtonCount> camera_direction_buttons_ = {};
-    std::array<lv_obj_t*, kCameraDirectionButtonCount> camera_direction_icon_labels_ = {};
-    std::array<CameraControlData, kCameraControlCount> camera_control_data_ = {};
-    lv_obj_t* camera_ble_status_label_ = nullptr;
-    bool camera_ble_connected_ = false;
 
     lv_obj_t* gallery_screen_ = nullptr;
     lv_obj_t* gallery_list_ = nullptr;
@@ -179,8 +151,6 @@ private:
     esp_timer_handle_t camera_preview_timer_ = nullptr;
     std::function<void()> camera_preview_callback_;
     std::atomic<bool> vision_recognition_running_ = false;
-    std::atomic<bool> remote_selfie_active_ = false;
-    bool remote_selfie_audio_suspended_ = false;
     int current_dialogue_scene_option_id_ = 0;
     bool magic_mirror_chat_started_ = false;
     int64_t dialogue_scene_deadline_us_ = 0;
@@ -218,7 +188,6 @@ private:
     uint32_t sleep_music_noise_seed_ = 0x13572468u;
 
     void InitializeMainMenu();
-    void InitializeCameraScreen();
     void InitializeGallery();
     void InitializeWordDictationSupport();
     void DeinitializeWordDictationSupport();
@@ -237,16 +206,6 @@ private:
     void OnMenuOptionClicked(int option_id);
     void ReturnToMainMenu();
     void ReturnToCameraScreen();
-    bool HandleRemoteSelfieSpeechRecognized(const std::string& text);
-    bool ExecuteRemoteSelfieSpeechAction(RemoteSelfieAction action, const char* success_notification);
-    void RefreshRemoteSelfieSceneContext();
-    void UpdateRemoteSelfieControlStyles();
-    void ExecuteCameraAction();
-    void SuspendAudioForRemoteSelfie();
-    void ResumeAudioAfterRemoteSelfie();
-    void CleanupRemoteSelfie();
-    void RequestCameraBleStatusRefresh();
-    void UpdateCameraBleStatus(bool connected);
     void InitializeMagicMirrorIntro();
     void ShowMagicMirrorIntro();
     void HideMagicMirrorIntro();
@@ -301,7 +260,6 @@ private:
     void UpdateVisionAiBadgeVisibility();
     void RefreshMenuIconImages();
     std::string BuildVisionScenePayload() const;
-    std::string BuildRemoteSelfieScenePayload() const;
     std::string BuildDialogueScenePayload(int option_id) const;
     const lv_image_dsc_t* LoadAssetImage(const char* asset_name);
     const char* GetMenuText(int option_id) const;
@@ -319,13 +277,8 @@ private:
     static void OnMenuButtonClicked(lv_event_t* e);
     static void OnVisionAiButtonClicked(lv_event_t* e);
     static void OnAiScreenGesture(lv_event_t* e);
-    static void OnCameraScreenGesture(lv_event_t* e);
     static void OnGalleryScreenGesture(lv_event_t* e);
     static void OnPhotoViewerGesture(lv_event_t* e);
-    static void OnCameraControlButtonClicked(lv_event_t* e);
-    static void OnCameraDirectionButtonDraw(lv_event_t* e);
-    static void OnCameraActionButtonClicked(lv_event_t* e);
-    static void OnCameraBleStatusAsync(void* user_data);
     static void OnBackButtonClicked(lv_event_t* e);
     static void OnWordDictationListItemClicked(lv_event_t* e);
     static void OnWordDictationActionClicked(lv_event_t* e);

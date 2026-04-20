@@ -3,7 +3,6 @@
 #include "application.h"
 #include "ui_menu_ai_print.h"
 #include "assets.h"
-#include "ble_hid.h"
 #include "board.h"
 #include "esp32_camera.h"
 #include "lvgl_theme.h"
@@ -24,7 +23,6 @@
 #include <cstring>
 #include <dirent.h>
 #include <functional>
-#include <initializer_list>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -41,7 +39,6 @@ constexpr int kEncyclopediaOptionId = 2;
 constexpr int kOralPracticeOptionId = 3;
 constexpr int kVisionOptionId = 4;
 constexpr int kAiMassageOptionId = 5;
-constexpr int kRemoteSelfieOptionId = 6;
 constexpr int kWordDictationOptionId = 8;
 constexpr int kFaceReadingOptionId = 9;
 constexpr int kMagicMirrorOptionId = 10;
@@ -62,10 +59,6 @@ constexpr int kBackTargetSettings = 1;
 constexpr int kBackTargetCamera = 2;
 constexpr int kBackTargetGallery = 3;
 constexpr int kBackTargetWordDictation = 4;
-constexpr char kRemoteSelfieDeviceName[] = "Xiaozhi-HID";
-constexpr uint32_t kRemoteSelfiePanelColor = 0xF2F2F2;
-constexpr uint32_t kRemoteSelfieInactiveColor = 0x979797;
-constexpr uint32_t kRemoteSelfieActiveColor = 0x39A856;
 
 struct VisionTaskContext {
     UiLcdDisplay* display = nullptr;
@@ -121,24 +114,6 @@ bool IsPersistentContentOverlay(lv_obj_t* object) {
 
     const void* user_data = lv_obj_get_user_data(object);
     return user_data != nullptr && strcmp(static_cast<const char*>(user_data), "preview_overlay") == 0;
-}
-
-std::string NormalizeSpeechText(const std::string& text) {
-    std::string normalized;
-    normalized.reserve(text.size());
-    for (unsigned char ch : text) {
-        if (std::isspace(ch) != 0) {
-            continue;
-        }
-        normalized.push_back(static_cast<char>(std::tolower(ch)));
-    }
-    return normalized;
-}
-
-bool ContainsAnyKeyword(const std::string& text, std::initializer_list<const char*> keywords) {
-    return std::any_of(keywords.begin(), keywords.end(), [&text](const char* keyword) {
-        return keyword != nullptr && text.find(keyword) != std::string::npos;
-    });
 }
 
 std::string TrimCopy(const std::string& text) {
@@ -250,7 +225,7 @@ UiLcdDisplay::~UiLcdDisplay() {
     DeinitializeSleepMusicSupport();
     DeinitializeWordDictationSupport();
     UiMenuAiAlarm::DeinitializeSupport(*this);
-    BleHid::GetInstance().OnConnectionStateChanged({});
+    UiMenuRemoteSelfie::Deactivate(*this);
 }
 
 void UiLcdDisplay::SetEmotion(const char* emotion) {
@@ -304,8 +279,8 @@ const char* UiLcdDisplay::GetMenuText(int option_id) const {
         return "拍识万物";
     case kAiMassageOptionId:
         return "除皱按摩";
-    case kRemoteSelfieOptionId:
-        return "AI自拍杆";
+    case kUiMenuRemoteSelfieOptionId:
+        return UiMenuRemoteSelfie::GetMenuText();
     case kUiMenuAiPrintOptionId:
         return UiMenuAiPrint::GetMenuText();
     case kWordDictationOptionId:
@@ -335,8 +310,8 @@ const char* UiLcdDisplay::GetMenuIconAssetName(int option_id) const {
         return "menu_vision.png";
     case kAiMassageOptionId:
         return "menu_ai_massage.png";
-    case kRemoteSelfieOptionId:
-        return "menu_remote_selfie.png";
+    case kUiMenuRemoteSelfieOptionId:
+        return UiMenuRemoteSelfie::GetMenuIconAssetName();
     case kUiMenuAiPrintOptionId:
         return UiMenuAiPrint::GetMenuIconAssetName();
     case kWordDictationOptionId:
@@ -407,49 +382,6 @@ std::string UiLcdDisplay::BuildVisionScenePayload() const {
         << "\"reply_language\":\"" << language << "\","
         << "\"input_language\":\"" << language << "\","
         << "\"mode\":\"camera_preview_explain\","
-        << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
-    return oss.str();
-}
-
-std::string UiLcdDisplay::BuildRemoteSelfieScenePayload() const {
-    const std::string language = UiMenuSetting::GetSelectedLanguageCode();
-    const bool bluetooth_connected = BleHid::GetInstance().IsConnected();
-    std::string instructions =
-        "You are a remote selfie assistant for controlling a phone camera over Bluetooth HID. "
-        "Always reply in the current reply_language. "
-        "Only use these remote selfie tools while the remote selfie screen is active. ";
-
-    instructions += bluetooth_connected
-        ? "Bluetooth HID status is connected. "
-        : "Bluetooth HID status is disconnected. ";
-
-    instructions +=
-        "If Bluetooth HID is disconnected, do not call any remote selfie tool and reply exactly "
-        "请连接蓝牙Xiaozhi-HID. "
-        "When the user says 语音使能 or asks to enable voice control, call self.remote_selfie.enable_voice_control. "
-        "When the user asks to swipe up, or says 向上滑、往上滑、上滑, call self.remote_selfie.swipe_up. "
-        "When the user asks to swipe down, or says 向下滑、往下滑、下滑, call self.remote_selfie.swipe_down. "
-        "When the user asks to swipe left, or says 向左滑、往左滑、左滑, call self.remote_selfie.swipe_left. "
-        "When the user asks to swipe right, or says 向右滑、往右滑、右滑, call self.remote_selfie.swipe_right. "
-        "When the user asks to focus, tap the screen, tap the center button, or says 对焦、聚焦、点中间, "
-        "call self.remote_selfie.focus. "
-        "When the user asks to take a photo, or says 拍照、自拍、照相、拍一张、快门, "
-        "call self.remote_selfie.take_photo. "
-        "When the user asks to start recording, or says 开始录像、开始录制、录视频, "
-        "call self.remote_selfie.start_recording. "
-        "When the user asks to stop or end recording, or says 停止录像、结束录像、停止录制、结束录制, "
-        "call self.remote_selfie.stop_recording. "
-        "If a tool fails, tell the user to connect Bluetooth device Xiaozhi-HID first. "
-        "Keep replies short and action-oriented.";
-
-    std::ostringstream oss;
-    oss << "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{"
-        << "\"scene\":\"remote_selfie\","
-        << "\"language\":\"" << language << "\","
-        << "\"reply_language\":\"" << language << "\","
-        << "\"input_language\":\"" << language << "\","
-        << "\"mode\":\"ble_camera_remote\","
-        << "\"bluetooth_connected\":" << (bluetooth_connected ? "true" : "false") << ","
         << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
     return oss.str();
 }
@@ -1241,153 +1173,6 @@ void UiLcdDisplay::UpdateVisionAiBadgeVisibility() {
     }
 }
 
-void UiLcdDisplay::InitializeCameraScreen() {
-    DisplayLockGuard lock(this);
-
-    if (camera_screen_ != nullptr) {
-        return;
-    }
-
-    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
-
-    camera_screen_ = lv_obj_create(nullptr);
-    lv_obj_set_style_bg_color(camera_screen_, lv_color_white(), 0);
-    lv_obj_set_style_border_width(camera_screen_, 0, 0);
-    lv_obj_set_style_pad_all(camera_screen_, 0, 0);
-    lv_obj_set_scrollbar_mode(camera_screen_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_clear_flag(camera_screen_, LV_OBJ_FLAG_SCROLLABLE);
-
-    camera_card_ = lv_obj_create(camera_screen_);
-    lv_obj_set_size(camera_card_, LV_HOR_RES - 4, LV_VER_RES - 4);
-    lv_obj_align(camera_card_, LV_ALIGN_TOP_MID, 0, 2);
-    lv_obj_set_style_bg_color(camera_card_, lv_color_hex(kRemoteSelfiePanelColor), 0);
-    lv_obj_set_style_border_width(camera_card_, 0, 0);
-    lv_obj_set_style_radius(camera_card_, 26, 0);
-    lv_obj_set_style_pad_all(camera_card_, 0, 0);
-    lv_obj_set_scrollbar_mode(camera_card_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_clear_flag(camera_card_, LV_OBJ_FLAG_SCROLLABLE);
-
-    auto create_icon_button = [&](lv_coord_t width, lv_coord_t height, lv_align_t align, lv_coord_t x, lv_coord_t y) {
-        lv_obj_t* button = lv_btn_create(camera_card_);
-        lv_obj_set_size(button, width, height);
-        lv_obj_align(button, align, x, y);
-        lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(button, 0, 0);
-        lv_obj_set_style_shadow_width(button, 0, 0);
-        lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(button, lv_color_white(), LV_STATE_PRESSED);
-        lv_obj_set_style_bg_opa(button, LV_OPA_40, LV_STATE_PRESSED);
-        lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_ext_click_area(button, 8);
-        return button;
-    };
-
-    auto create_camera_shape = [](lv_obj_t* parent, lv_coord_t width, lv_coord_t height, lv_align_t align,
-                                  lv_coord_t x, lv_coord_t y, lv_coord_t radius) {
-        lv_obj_t* shape = lv_obj_create(parent);
-        lv_obj_set_size(shape, width, height);
-        lv_obj_align(shape, align, x, y);
-        lv_obj_set_style_pad_all(shape, 0, 0);
-        lv_obj_set_style_border_width(shape, 0, 0);
-        lv_obj_set_style_shadow_width(shape, 0, 0);
-        lv_obj_set_style_radius(shape, radius, 0);
-        lv_obj_clear_flag(shape, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_remove_flag(shape, LV_OBJ_FLAG_CLICKABLE);
-        return shape;
-    };
-
-    const lv_coord_t card_width = LV_HOR_RES - 4;
-    const lv_coord_t card_height = LV_VER_RES - 4;
-    const lv_coord_t control_pad_center_x = card_width / 4 + 2;
-    const lv_coord_t control_pad_center_y = card_height / 2 - 4;
-    const lv_coord_t control_step = 56;
-    const lv_coord_t direction_button_size = 58;
-    const lv_coord_t focus_button_size = 44;
-    const lv_coord_t shutter_button_width = 112;
-    const lv_coord_t shutter_button_height = 88;
-    const lv_coord_t shutter_center_x = card_width * 3 / 4 + 6;
-    const lv_coord_t shutter_center_y = card_height / 2 - 2;
-
-    const RemoteSelfieAction direction_actions[kCameraDirectionButtonCount] = {
-        RemoteSelfieAction::kSwipeUp,
-        RemoteSelfieAction::kSwipeDown,
-        RemoteSelfieAction::kSwipeLeft,
-        RemoteSelfieAction::kSwipeRight,
-    };
-    const lv_align_t direction_aligns[kCameraDirectionButtonCount] = {
-        LV_ALIGN_TOP_LEFT,
-        LV_ALIGN_TOP_LEFT,
-        LV_ALIGN_TOP_LEFT,
-        LV_ALIGN_TOP_LEFT,
-    };
-    const lv_coord_t direction_x[kCameraDirectionButtonCount] = {
-        control_pad_center_x - direction_button_size / 2,
-        control_pad_center_x - direction_button_size / 2,
-        control_pad_center_x - control_step - direction_button_size / 2,
-        control_pad_center_x + control_step - direction_button_size / 2,
-    };
-    const lv_coord_t direction_y[kCameraDirectionButtonCount] = {
-        control_pad_center_y - control_step - direction_button_size / 2,
-        control_pad_center_y + control_step - direction_button_size / 2,
-        control_pad_center_y - direction_button_size / 2,
-        control_pad_center_y - direction_button_size / 2,
-    };
-
-    for (size_t i = 0; i < kCameraDirectionButtonCount; ++i) {
-        camera_control_data_[i] = CameraControlData{this, direction_actions[i]};
-        camera_direction_buttons_[i] = create_icon_button(
-            direction_button_size, direction_button_size, direction_aligns[i], direction_x[i], direction_y[i]);
-        lv_obj_set_user_data(camera_direction_buttons_[i], &camera_control_data_[i]);
-        lv_obj_add_event_cb(camera_direction_buttons_[i], OnCameraControlButtonClicked, LV_EVENT_CLICKED, nullptr);
-        lv_obj_add_event_cb(camera_direction_buttons_[i], OnCameraDirectionButtonDraw, LV_EVENT_DRAW_MAIN, nullptr);
-    }
-
-    camera_control_data_[4] = CameraControlData{this, RemoteSelfieAction::kFocus};
-    camera_focus_btn_ = create_icon_button(
-        focus_button_size,
-        focus_button_size,
-        LV_ALIGN_TOP_LEFT,
-        control_pad_center_x - focus_button_size / 2,
-        control_pad_center_y - focus_button_size / 2);
-    lv_obj_set_style_bg_opa(camera_focus_btn_, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_opa(camera_focus_btn_, LV_OPA_80, LV_STATE_PRESSED);
-    lv_obj_set_user_data(camera_focus_btn_, &camera_control_data_[4]);
-    lv_obj_add_event_cb(camera_focus_btn_, OnCameraControlButtonClicked, LV_EVENT_CLICKED, nullptr);
-
-    camera_shutter_btn_ = create_icon_button(
-        shutter_button_width,
-        shutter_button_height,
-        LV_ALIGN_TOP_LEFT,
-        shutter_center_x - shutter_button_width / 2,
-        shutter_center_y - shutter_button_height / 2);
-    lv_obj_set_style_bg_opa(camera_shutter_btn_, LV_OPA_20, LV_STATE_PRESSED);
-    lv_obj_set_user_data(camera_shutter_btn_, this);
-    lv_obj_add_event_cb(camera_shutter_btn_, OnCameraActionButtonClicked, LV_EVENT_CLICKED, nullptr);
-    camera_shutter_body_ = create_camera_shape(camera_shutter_btn_, 78, 52, LV_ALIGN_BOTTOM_MID, 0, -6, 16);
-    camera_shutter_top_ = create_camera_shape(camera_shutter_btn_, 34, 16, LV_ALIGN_TOP_LEFT, 0, 0, 8);
-    lv_obj_align_to(camera_shutter_top_, camera_shutter_body_, LV_ALIGN_OUT_TOP_MID, -14, 6);
-    camera_shutter_lens_ring_ = create_camera_shape(camera_shutter_body_, 36, 36, LV_ALIGN_CENTER, 0, 0, LV_RADIUS_CIRCLE);
-    lv_obj_set_style_bg_opa(camera_shutter_lens_ring_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(camera_shutter_lens_ring_, 5, 0);
-    lv_obj_set_style_border_color(camera_shutter_lens_ring_, lv_color_white(), 0);
-    camera_shutter_flash_dot_ = create_camera_shape(camera_shutter_body_, 10, 10, LV_ALIGN_TOP_RIGHT, -10, 10, LV_RADIUS_CIRCLE);
-    lv_obj_set_style_bg_color(camera_shutter_flash_dot_, lv_color_white(), 0);
-
-    camera_ble_status_label_ = lv_label_create(camera_card_);
-    lv_obj_set_width(camera_ble_status_label_, LV_HOR_RES - 28);
-    lv_obj_align(camera_ble_status_label_, LV_ALIGN_BOTTOM_MID, 0, -16);
-    lv_obj_set_style_text_align(camera_ble_status_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(camera_ble_status_label_, lv_color_black(), 0);
-    lv_obj_set_style_text_font(camera_ble_status_label_, lvgl_theme->text_font()->font(), 0);
-    lv_label_set_text(camera_ble_status_label_, "");
-
-    camera_back_button_data_ = UiBackButtonData{this, kBackTargetMainMenu};
-    CreateBackButton(camera_screen_, &camera_back_button_data_);
-    camera_ble_connected_ = false;
-    lv_label_set_text(camera_ble_status_label_, "请连接蓝牙Xiaozhi-HID");
-    UpdateRemoteSelfieControlStyles();
-}
-
 void UiLcdDisplay::InitializeGallery() {
     DisplayLockGuard lock(this);
 
@@ -1578,40 +1363,8 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         Application::GetInstance().SetSceneContextPayload("");
     }
 
-    if (option_id == kRemoteSelfieOptionId) {
-        if (camera_screen_ == nullptr) {
-            InitializeCameraScreen();
-        }
-        remote_selfie_active_ = true;
-        Application::GetInstance().SetSceneContextPayload(BuildRemoteSelfieScenePayload());
-        auto& ble_hid = BleHid::GetInstance();
-        ble_hid.SetScreenActive(true);
-        bool ble_ready = ble_hid.Initialize();
-        if (!ble_ready) {
-            ESP_LOGW(TAG, "BLE HID init failed with audio active, retrying after suspending audio");
-            SuspendAudioForRemoteSelfie();
-            ble_ready = ble_hid.Initialize();
-        }
-        ble_hid.OnConnectionStateChanged([this](bool /*connected*/) {
-            RequestCameraBleStatusRefresh();
-        });
-        if (ble_ready) {
-            ResumeAudioAfterRemoteSelfie();
-            UpdateCameraBleStatus(ble_hid.IsConnected());
-        } else {
-            ResumeAudioAfterRemoteSelfie();
-            ShowNotification("蓝牙启动失败，请返回重试", 2000);
-            DisplayLockGuard lock(this);
-            lv_label_set_text(camera_ble_status_label_, "蓝牙启动失败，请返回重试");
-        }
-
-        UiMenuAiAlarm::HidePanel(*this);
-        ClearFeatureVisual();
-        gallery_swipe_enabled_ = false;
-        StopCameraPreview();
-        DisplayLockGuard lock(this);
-        lv_screen_load(camera_screen_);
-        MoveStatusBarToScreen(camera_screen_);
+    if (option_id == kUiMenuRemoteSelfieOptionId) {
+        UiMenuRemoteSelfie::ShowScreen(*this);
         return;
     }
 
@@ -1642,9 +1395,8 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         return;
     }
 
-    if (lv_screen_active() == camera_screen_) {
-        CleanupRemoteSelfie();
-        ResumeAudioAfterRemoteSelfie();
+    if (UiMenuRemoteSelfie::IsScreenActive(*this)) {
+        UiMenuRemoteSelfie::Deactivate(*this);
     }
 
     if (IsDialogueSceneOption(option_id)) {
@@ -1686,9 +1438,8 @@ void UiLcdDisplay::ReturnToMainMenu() {
     ExitDialogueScene(true);
     Application::GetInstance().SetSceneContextPayload("");
     SetPreviewPresentationMode(PreviewPresentationMode::kChatBubble);
-    if (lv_screen_active() == camera_screen_) {
-        CleanupRemoteSelfie();
-        ResumeAudioAfterRemoteSelfie();
+    if (UiMenuRemoteSelfie::IsScreenActive(*this)) {
+        UiMenuRemoteSelfie::Deactivate(*this);
     }
 
     StopWordDictationPlayback();
@@ -1720,248 +1471,11 @@ void UiLcdDisplay::ReturnToCameraScreen() {
 }
 
 bool UiLcdDisplay::IsRemoteSelfieActive() const {
-    return remote_selfie_active_.load();
+    return UiMenuRemoteSelfie::IsActive(*this);
 }
 
-bool UiLcdDisplay::HandleRemoteSelfieSpeechRecognized(const std::string& text) {
-    if (!IsRemoteSelfieActive()) {
-        return false;
-    }
-
-    const std::string normalized = NormalizeSpeechText(text);
-    if (normalized.empty()) {
-        return false;
-    }
-
-    if (ContainsAnyKeyword(normalized, {
-            "停止录像", "结束录像", "停止录制", "结束录制", "停止录影", "结束录影",
-            "停止视频", "结束视频", "stoprecording"})) {
-        return ExecuteRemoteSelfieSpeechAction(
-            RemoteSelfieAction::kCapture, "已发送停止录像指令");
-    }
-
-    if (ContainsAnyKeyword(normalized, {
-            "开始录像", "开始录制", "开始录影", "录视频", "拍视频", "startrecording"})) {
-        return ExecuteRemoteSelfieSpeechAction(
-            RemoteSelfieAction::kCapture, "已发送录像指令");
-    }
-
-    if (ContainsAnyKeyword(normalized, {
-            "拍照", "自拍", "照相", "拍一张", "拍张照", "拍照片", "快门",
-            "takephoto", "takepicture"})) {
-        return ExecuteRemoteSelfieSpeechAction(
-            RemoteSelfieAction::kCapture, "已发送拍照指令");
-    }
-
-    if (ContainsAnyKeyword(normalized, {
-            "对焦", "聚焦", "点中间", "点击中间", "点一下", "点屏幕",
-            "点击屏幕", "tapcenter", "focus"})) {
-        return ExecuteRemoteSelfieSpeechAction(
-            RemoteSelfieAction::kFocus, "已发送对焦指令");
-    }
-
-    if (ContainsAnyKeyword(normalized, {"向上滑", "往上滑", "上滑", "上划", "swipeup"})) {
-        return ExecuteRemoteSelfieSpeechAction(
-            RemoteSelfieAction::kSwipeUp, "已发送上滑指令");
-    }
-
-    if (ContainsAnyKeyword(normalized, {"向下滑", "往下滑", "下滑", "下划", "swipedown"})) {
-        return ExecuteRemoteSelfieSpeechAction(
-            RemoteSelfieAction::kSwipeDown, "已发送下滑指令");
-    }
-
-    if (ContainsAnyKeyword(normalized, {"向左滑", "往左滑", "左滑", "左划", "swipeleft"})) {
-        return ExecuteRemoteSelfieSpeechAction(
-            RemoteSelfieAction::kSwipeLeft, "已发送左滑指令");
-    }
-
-    if (ContainsAnyKeyword(normalized, {"向右滑", "往右滑", "右滑", "右划", "swiperight"})) {
-        return ExecuteRemoteSelfieSpeechAction(
-            RemoteSelfieAction::kSwipeRight, "已发送右滑指令");
-    }
-
-    if (ContainsAnyKeyword(normalized, {
-            "语音使能", "开启语音控制", "打开语音控制", "启用语音控制",
-            "enablevoicecontrol"})) {
-        if (!BleHid::GetInstance().IsConnected()) {
-            UpdateCameraBleStatus(false);
-            return false;
-        }
-        ShowNotification("语音控制已就绪", 1200);
-        return true;
-    }
-
-    return false;
-}
-
-bool UiLcdDisplay::ExecuteRemoteSelfieSpeechAction(RemoteSelfieAction action, const char* success_notification) {
-    auto& ble_hid = BleHid::GetInstance();
-    if (!ble_hid.IsConnected()) {
-        UpdateCameraBleStatus(false);
-        return false;
-    }
-
-    if (!ExecuteRemoteSelfieAction(action)) {
-        if (!ble_hid.IsConnected()) {
-            UpdateCameraBleStatus(false);
-            return false;
-        }
-        ShowNotification("自拍指令发送失败，请重试", 1500);
-        return true;
-    }
-
-    if (success_notification != nullptr && success_notification[0] != '\0') {
-        ShowNotification(success_notification, 1000);
-    }
-    return true;
-}
-
-void UiLcdDisplay::RefreshRemoteSelfieSceneContext() {
-    if (!remote_selfie_active_.load()) {
-        return;
-    }
-
-    Application::GetInstance().SetSceneContextPayload(BuildRemoteSelfieScenePayload());
-}
-
-void UiLcdDisplay::UpdateRemoteSelfieControlStyles() {
-    const lv_color_t control_color = lv_color_hex(
-        camera_ble_connected_ ? kRemoteSelfieActiveColor : kRemoteSelfieInactiveColor);
-
-    for (auto* button : camera_direction_buttons_) {
-        if (button != nullptr) {
-            lv_obj_invalidate(button);
-        }
-    }
-
-    if (camera_focus_btn_ != nullptr) {
-        lv_obj_set_style_bg_color(camera_focus_btn_, control_color, 0);
-        lv_obj_set_style_bg_color(camera_focus_btn_, control_color, LV_STATE_PRESSED);
-    }
-
-    if (camera_shutter_body_ != nullptr) {
-        lv_obj_set_style_bg_color(camera_shutter_body_, control_color, 0);
-    }
-
-    if (camera_shutter_top_ != nullptr) {
-        lv_obj_set_style_bg_color(camera_shutter_top_, control_color, 0);
-    }
-
-    if (camera_shutter_lens_ring_ != nullptr) {
-        lv_obj_set_style_border_color(camera_shutter_lens_ring_, lv_color_white(), 0);
-    }
-
-    if (camera_shutter_flash_dot_ != nullptr) {
-        lv_obj_set_style_bg_color(camera_shutter_flash_dot_, lv_color_white(), 0);
-    }
-}
-
-bool UiLcdDisplay::ExecuteRemoteSelfieAction(RemoteSelfieAction action) {
-    auto& ble_hid = BleHid::GetInstance();
-    bool success = false;
-
-    switch (action) {
-    case RemoteSelfieAction::kSwipeUp:
-        success = ble_hid.SendSwipeUp();
-        break;
-    case RemoteSelfieAction::kSwipeDown:
-        success = ble_hid.SendSwipeDown();
-        break;
-    case RemoteSelfieAction::kSwipeLeft:
-        success = ble_hid.SendSwipeLeft();
-        break;
-    case RemoteSelfieAction::kSwipeRight:
-        success = ble_hid.SendSwipeRight();
-        break;
-    case RemoteSelfieAction::kFocus:
-        success = ble_hid.SendMouseClick();
-        break;
-    case RemoteSelfieAction::kCapture:
-        success = ble_hid.SendVolumeDown();
-        break;
-    }
-
-    if (!success) {
-        ESP_LOGW(TAG, "BLE HID not connected, remote selfie action=%d failed", static_cast<int>(action));
-    }
-
-    return success;
-}
-
-void UiLcdDisplay::ExecuteCameraAction() {
-    ExecuteRemoteSelfieAction(RemoteSelfieAction::kCapture);
-}
-
-void UiLcdDisplay::SuspendAudioForRemoteSelfie() {
-    if (remote_selfie_audio_suspended_) {
-        return;
-    }
-
-    Application::GetInstance().SuspendAudioForFeature();
-    remote_selfie_audio_suspended_ = true;
-}
-
-void UiLcdDisplay::ResumeAudioAfterRemoteSelfie() {
-    if (!remote_selfie_audio_suspended_) {
-        return;
-    }
-
-    Application::GetInstance().ResumeAudioAfterFeature();
-    remote_selfie_audio_suspended_ = false;
-}
-
-void UiLcdDisplay::CleanupRemoteSelfie() {
-    remote_selfie_active_ = false;
-    auto& app = Application::GetInstance();
-    app.SetSceneContextPayload("");
-    app.ExitChatSession();
-
-    auto& ble_hid = BleHid::GetInstance();
-    ble_hid.OnConnectionStateChanged({});
-    ble_hid.SetScreenActive(false);
-    ble_hid.Deinitialize();
-    camera_ble_connected_ = false;
-}
-
-void UiLcdDisplay::RequestCameraBleStatusRefresh() {
-    if (camera_ble_status_label_ == nullptr) {
-        return;
-    }
-
-    if (!Lock(5)) {
-        return;
-    }
-
-    lv_async_call(OnCameraBleStatusAsync, this);
-    Unlock();
-}
-
-void UiLcdDisplay::UpdateCameraBleStatus(bool connected) {
-    camera_ble_connected_ = connected;
-    if (camera_ble_status_label_ == nullptr) {
-        RefreshRemoteSelfieSceneContext();
-        return;
-    }
-
-    char status_text[64];
-    snprintf(status_text,
-        sizeof(status_text),
-        connected ? "已连接蓝牙%s" : "请连接蓝牙%s",
-        kRemoteSelfieDeviceName);
-
-    DisplayLockGuard lock(this);
-    lv_label_set_text(camera_ble_status_label_, status_text);
-    UpdateRemoteSelfieControlStyles();
-    RefreshRemoteSelfieSceneContext();
-}
-
-void UiLcdDisplay::OnCameraBleStatusAsync(void* user_data) {
-    auto* display = static_cast<UiLcdDisplay*>(user_data);
-    if (display == nullptr) {
-        return;
-    }
-
-    display->UpdateCameraBleStatus(BleHid::GetInstance().IsConnected());
+bool UiLcdDisplay::ExecuteRemoteSelfieAction(UiMenuRemoteSelfieAction action) {
+    return UiMenuRemoteSelfie::ExecuteAction(*this, action);
 }
 
 void UiLcdDisplay::ShowGallery() {
@@ -2250,99 +1764,12 @@ void UiLcdDisplay::OnAiScreenGesture(lv_event_t* e) {
     }
 }
 
-void UiLcdDisplay::OnCameraScreenGesture(lv_event_t* e) {
-    (void)e;
-}
-
 void UiLcdDisplay::OnGalleryScreenGesture(lv_event_t* e) {
     (void)e;
 }
 
 void UiLcdDisplay::OnPhotoViewerGesture(lv_event_t* e) {
     (void)e;
-}
-
-void UiLcdDisplay::OnCameraControlButtonClicked(lv_event_t* e) {
-    auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
-    auto* data = static_cast<CameraControlData*>(lv_obj_get_user_data(target));
-    if (data != nullptr && data->display != nullptr) {
-        data->display->ExecuteRemoteSelfieAction(data->action);
-    }
-}
-
-void UiLcdDisplay::OnCameraDirectionButtonDraw(lv_event_t* e) {
-    auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
-    auto* data = static_cast<CameraControlData*>(lv_obj_get_user_data(target));
-    if (target == nullptr || data == nullptr || data->display == nullptr) {
-        return;
-    }
-
-    lv_layer_t* layer = lv_event_get_layer(e);
-    if (layer == nullptr) {
-        return;
-    }
-
-    lv_area_t coords;
-    lv_obj_get_coords(target, &coords);
-
-    const lv_coord_t center_x = (coords.x1 + coords.x2) / 2;
-    const lv_coord_t center_y = (coords.y1 + coords.y2) / 2;
-    const lv_coord_t triangle_half_span = 19;
-    const lv_coord_t triangle_tip_offset = 15;
-    const lv_coord_t triangle_base_offset = 9;
-
-    lv_draw_triangle_dsc_t triangle;
-    lv_draw_triangle_dsc_init(&triangle);
-    triangle.color = lv_color_hex(
-        data->display->camera_ble_connected_ ? kRemoteSelfieActiveColor : kRemoteSelfieInactiveColor);
-    triangle.opa = lv_obj_has_state(target, LV_STATE_PRESSED) ? LV_OPA_70 : LV_OPA_COVER;
-
-    switch (data->action) {
-    case RemoteSelfieAction::kSwipeUp:
-        triangle.p[0].x = static_cast<lv_value_precise_t>(center_x - triangle_half_span);
-        triangle.p[0].y = static_cast<lv_value_precise_t>(center_y + triangle_base_offset);
-        triangle.p[1].x = static_cast<lv_value_precise_t>(center_x);
-        triangle.p[1].y = static_cast<lv_value_precise_t>(center_y - triangle_tip_offset);
-        triangle.p[2].x = static_cast<lv_value_precise_t>(center_x + triangle_half_span);
-        triangle.p[2].y = static_cast<lv_value_precise_t>(center_y + triangle_base_offset);
-        break;
-    case RemoteSelfieAction::kSwipeDown:
-        triangle.p[0].x = static_cast<lv_value_precise_t>(center_x - triangle_half_span);
-        triangle.p[0].y = static_cast<lv_value_precise_t>(center_y - triangle_base_offset);
-        triangle.p[1].x = static_cast<lv_value_precise_t>(center_x + triangle_half_span);
-        triangle.p[1].y = static_cast<lv_value_precise_t>(center_y - triangle_base_offset);
-        triangle.p[2].x = static_cast<lv_value_precise_t>(center_x);
-        triangle.p[2].y = static_cast<lv_value_precise_t>(center_y + triangle_tip_offset);
-        break;
-    case RemoteSelfieAction::kSwipeLeft:
-        triangle.p[0].x = static_cast<lv_value_precise_t>(center_x + triangle_base_offset);
-        triangle.p[0].y = static_cast<lv_value_precise_t>(center_y - triangle_half_span);
-        triangle.p[1].x = static_cast<lv_value_precise_t>(center_x - triangle_tip_offset);
-        triangle.p[1].y = static_cast<lv_value_precise_t>(center_y);
-        triangle.p[2].x = static_cast<lv_value_precise_t>(center_x + triangle_base_offset);
-        triangle.p[2].y = static_cast<lv_value_precise_t>(center_y + triangle_half_span);
-        break;
-    case RemoteSelfieAction::kSwipeRight:
-        triangle.p[0].x = static_cast<lv_value_precise_t>(center_x - triangle_base_offset);
-        triangle.p[0].y = static_cast<lv_value_precise_t>(center_y - triangle_half_span);
-        triangle.p[1].x = static_cast<lv_value_precise_t>(center_x + triangle_tip_offset);
-        triangle.p[1].y = static_cast<lv_value_precise_t>(center_y);
-        triangle.p[2].x = static_cast<lv_value_precise_t>(center_x - triangle_base_offset);
-        triangle.p[2].y = static_cast<lv_value_precise_t>(center_y + triangle_half_span);
-        break;
-    default:
-        return;
-    }
-
-    lv_draw_triangle(layer, &triangle);
-}
-
-void UiLcdDisplay::OnCameraActionButtonClicked(lv_event_t* e) {
-    auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
-    auto* display = static_cast<UiLcdDisplay*>(lv_obj_get_user_data(target));
-    if (display != nullptr) {
-        display->ExecuteCameraAction();
-    }
 }
 
 void UiLcdDisplay::OnBackButtonClicked(lv_event_t* e) {
