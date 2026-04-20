@@ -1,7 +1,7 @@
 #include "ui_display.h"
 
 #include "application.h"
-#include "ui_print_panel.h"
+#include "ui_menu_ai_print.h"
 #include "assets.h"
 #include "ble_hid.h"
 #include "board.h"
