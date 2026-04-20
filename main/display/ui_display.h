@@ -335,6 +335,9 @@ private:
     void ShowServerSwitchScreen();
     void ShowLanguageSwitchScreen();
     void ShowAboutScreen();
+    bool HandleRemoteSelfieSpeechRecognized(const std::string& text);
+    bool ExecuteRemoteSelfieSpeechAction(RemoteSelfieAction action, const char* success_notification);
+    void RefreshRemoteSelfieSceneContext();
     void UpdateRemoteSelfieControlStyles();
     void ExecuteCameraAction();
     void SuspendAudioForRemoteSelfie();

@@ -389,6 +389,7 @@ void LcdDisplay::SetupUI() {
     status_bar_ = lv_obj_create(container_);
     lv_obj_set_size(status_bar_, LV_HOR_RES, LV_SIZE_CONTENT);
     lv_obj_set_style_radius(status_bar_, 0, 0);
+    lv_obj_set_style_text_font(status_bar_, text_font, 0);
     lv_obj_set_style_bg_color(status_bar_, lvgl_theme->background_color(), 0);
     lv_obj_set_style_text_color(status_bar_, lvgl_theme->text_color(), 0);
     
@@ -905,6 +906,7 @@ void LcdDisplay::SetTheme(Theme* theme) {
     // Update status bar background color with 50% opacity
     lv_obj_set_style_bg_opa(status_bar_, LV_OPA_50, 0);
     lv_obj_set_style_bg_color(status_bar_, lvgl_theme->background_color(), 0);
+    lv_obj_set_style_text_font(status_bar_, text_font, 0);
     
     // Update status bar elements
     lv_obj_set_style_text_color(network_label_, lvgl_theme->text_color(), 0);
