@@ -63,32 +63,52 @@
 #define DISPLAY_RST_PIN       GPIO_NUM_NC
 #define DISPLAY_CS_PIN        GPIO_NUM_45
 
-//#define TOUCH_CONTROLLER_AXS5106
-#define TOUCH_CONTROLLER_CST816D
 #define TOUCH_I2C_SDA_PIN  CAMERA_PIN_SIOD  // GPIO_NUM_4
 #define TOUCH_I2C_SCL_PIN  CAMERA_PIN_SIOC  // GPIO_NUM_5
 #define TOUCH_MIRROR_X false
 #define TOUCH_MIRROR_Y true
 #define TOUCH_SWAP_XY true
 #define TOUCH_I2C_SPEED_HZ 400000
-#if defined(TOUCH_CONTROLLER_AXS5106)
-#define TOUCH_I2C_ADDRESS 0x63
-#elif defined(TOUCH_CONTROLLER_CST816D)
+
+#if CONFIG_LCD_ST7789_284X240
+#define TOUCH_CONTROLLER_CST816D
 #define TOUCH_I2C_ADDRESS 0x15
+#elif CONFIG_LCD_ST7789_320X240
+#define TOUCH_CONTROLLER_FT5X06
+#define TOUCH_I2C_ADDRESS 0x38
 #else
-#error "Select a touch controller type"
+#error "Select a touch controller configuration"
 #endif
 
 #define LCD_TYPE_ST7789_SERIAL
+
+#if CONFIG_LCD_ST7789_284X240
 #define DISPLAY_WIDTH   284
 #define DISPLAY_HEIGHT  240
 #define DISPLAY_MIRROR_X false
 #define DISPLAY_MIRROR_Y true
 #define DISPLAY_SWAP_XY true
-#define DISPLAY_INVERT_COLOR    true
-#define DISPLAY_RGB_ORDER  LCD_RGB_ELEMENT_ORDER_RGB
 #define DISPLAY_OFFSET_X  36
 #define DISPLAY_OFFSET_Y  0
+#define DISPLAY_INVERT_COLOR    true
+#define DISPLAY_DATA_ENDIAN LCD_RGB_DATA_ENDIAN_BIG
+#define DISPLAY_SWAP_BYTES 1
+#elif CONFIG_LCD_ST7789_320X240
+#define DISPLAY_WIDTH   320
+#define DISPLAY_HEIGHT  240
+#define DISPLAY_MIRROR_X false
+#define DISPLAY_MIRROR_Y true
+#define DISPLAY_SWAP_XY true
+#define DISPLAY_OFFSET_X  0
+#define DISPLAY_OFFSET_Y  0
+#define DISPLAY_INVERT_COLOR    false
+#define DISPLAY_DATA_ENDIAN LCD_RGB_DATA_ENDIAN_LITTLE
+#define DISPLAY_SWAP_BYTES 0
+#else
+#error "Select an LCD resolution"
+#endif
+
+#define DISPLAY_RGB_ORDER  LCD_RGB_ELEMENT_ORDER_RGB
 #define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
 #define DISPLAY_SPI_MODE 0
 
@@ -103,32 +123,6 @@ bsp_lcd_new_panel_st7789(const esp_lcd_panel_io_handle_t io, const esp_lcd_panel
 #ifdef __cplusplus
 }
 #endif
-
-
-//#define LCD_TYPE_GC9A01_SERIAL
-//#define DISPLAY_WIDTH   240
-//#define DISPLAY_HEIGHT  240
-//#define DISPLAY_MIRROR_X true
-//#define DISPLAY_MIRROR_Y false
-//#define DISPLAY_SWAP_XY false
-//#define DISPLAY_INVERT_COLOR    true
-//#define DISPLAY_RGB_ORDER  LCD_RGB_ELEMENT_ORDER_BGR
-//#define DISPLAY_OFFSET_X  0
-//#define DISPLAY_OFFSET_Y  0
-//#define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
-//#define DISPLAY_SPI_MODE 0
-
-
-//#if CONFIG_OLED_SSD1306_128X32
-//#define DISPLAY_HEIGHT  32
-//#elif CONFIG_OLED_SSD1306_128X64
-//#define DISPLAY_HEIGHT  64
-//#else
-//#error "未选择 OLED 屏幕类型"
-//#endif
-//
-//#define DISPLAY_MIRROR_X true
-//#define DISPLAY_MIRROR_Y true
 
 
 #define ML307_RX_PIN GPIO_NUM_38

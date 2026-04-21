@@ -60,6 +60,14 @@ constexpr int kBackTargetCamera = 2;
 constexpr int kBackTargetGallery = 3;
 constexpr int kBackTargetWordDictation = 4;
 
+lv_opa_t GetStatusBarBackgroundOpa(int width, int height, bool transparent) {
+    if (transparent) {
+        return LV_OPA_TRANSP;
+    }
+
+    return (width == 320 && height == 240) ? LV_OPA_COVER : LV_OPA_50;
+}
+
 struct VisionTaskContext {
     UiLcdDisplay* display = nullptr;
     std::string question;
@@ -1209,7 +1217,7 @@ void UiLcdDisplay::UpdateStatusBarAppearance(lv_obj_t* target_screen) {
 
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     const bool transparent = ShouldUseTransparentStatusBar(target_screen);
-    const lv_opa_t background_opa = transparent ? LV_OPA_TRANSP : LV_OPA_50;
+    const lv_opa_t background_opa = GetStatusBarBackgroundOpa(width_, height_, transparent);
     const lv_color_t background_color = lvgl_theme->background_color();
     const lv_color_t text_color = lvgl_theme->text_color();
 

@@ -14,9 +14,12 @@
 #include <esp_lcd_touch_axs5106.h>
 #elif defined(TOUCH_CONTROLLER_CST816D)
 #include <esp_lcd_touch_cst816s.h>
+#elif defined(TOUCH_CONTROLLER_FT5X06)
+#include <esp_lcd_touch_ft5x06.h>
 #endif
 
 #include <driver/i2c_master.h>
+#include <esp_err.h>
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <esp_lcd_panel_ops.h>
@@ -144,7 +147,10 @@ private:
 
         esp_lcd_panel_dev_config_t panel_config = {};
         panel_config.reset_gpio_num = DISPLAY_RST_PIN;
+#if !CONFIG_LCD_ST7789_320X240
         panel_config.rgb_ele_order = DISPLAY_RGB_ORDER;
+#endif
+        panel_config.data_endian = DISPLAY_DATA_ENDIAN;
         panel_config.bits_per_pixel = 16;
 
 #if defined(LCD_TYPE_ILI9341_SERIAL)
@@ -173,6 +179,7 @@ private:
 
     void InitializeTouch() {
         esp_lcd_touch_handle_t tp = nullptr;
+        esp_err_t ret = ESP_OK;
 
 #if defined(TOUCH_CONTROLLER_AXS5106)
         i2c_master_dev_handle_t touch_dev_handle = nullptr;
@@ -182,10 +189,10 @@ private:
             .scl_speed_hz = TOUCH_I2C_SPEED_HZ,
         };
         ESP_ERROR_CHECK(i2c_master_bus_add_device(i2c_bus_, &touch_dev_cfg, &touch_dev_handle));
-#elif defined(TOUCH_CONTROLLER_CST816D)
+#elif defined(TOUCH_CONTROLLER_CST816D) || defined(TOUCH_CONTROLLER_FT5X06)
         esp_lcd_panel_io_handle_t tp_io_handle = nullptr;
         esp_lcd_panel_io_i2c_config_t tp_io_config = {
-            .dev_addr = ESP_LCD_TOUCH_IO_I2C_CST816S_ADDRESS,
+            .dev_addr = TOUCH_I2C_ADDRESS,
             .on_color_trans_done = nullptr,
             .user_ctx = nullptr,
             .control_phase_bytes = 1,
@@ -218,10 +225,19 @@ private:
         };
 
 #if defined(TOUCH_CONTROLLER_AXS5106)
-        ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_axs5106(touch_dev_handle, &tp_cfg, &tp));
+        ret = esp_lcd_touch_new_i2c_axs5106(touch_dev_handle, &tp_cfg, &tp);
 #elif defined(TOUCH_CONTROLLER_CST816D)
-        ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_cst816s(tp_io_handle, &tp_cfg, &tp));
+        ret = esp_lcd_touch_new_i2c_cst816s(tp_io_handle, &tp_cfg, &tp);
+#elif defined(TOUCH_CONTROLLER_FT5X06)
+        ret = esp_lcd_touch_new_i2c_ft5x06(tp_io_handle, &tp_cfg, &tp);
+#else
+        ret = ESP_ERR_NOT_SUPPORTED;
 #endif
+
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Touch screen initialization failed: %s (0x%x)", esp_err_to_name(ret), ret);
+            return;
+        }
 
         const lvgl_port_touch_cfg_t touch_cfg = {
             .disp = lv_display_get_default(),

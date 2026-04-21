@@ -3,6 +3,7 @@
 #include "settings.h"
 #include "lvgl_theme.h"
 #include "assets/lang_config.h"
+#include "sdkconfig.h"
 
 #include <vector>
 #include <algorithm>
@@ -16,13 +17,29 @@
 #include "board.h"
 
 #define TAG "LcdDisplay"
-#define PREVIEW_OVERLAY_TAG "preview_overlay"
 
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 LV_FONT_DECLARE(BUILTIN_ICON_FONT);
 LV_FONT_DECLARE(font_awesome_30_4);
 
 namespace {
+
+constexpr char kPreviewOverlayTag[] = "preview_overlay";
+constexpr char kMessageRoleUser[] = "user";
+constexpr char kMessageRoleAssistant[] = "assistant";
+constexpr char kMessageRoleSystem[] = "system";
+constexpr char kMessageRoleImage[] = "image";
+
+constexpr lv_opa_t kDefaultMessageBubbleOpa = LV_OPA_70;
+constexpr lv_opa_t kCompactSafeMessageBubbleOpa = LV_OPA_COVER;
+constexpr lv_opa_t kDefaultStatusBarOpa = LV_OPA_50;
+constexpr lv_opa_t kCompactSafeStatusBarOpa = LV_OPA_COVER;
+
+#if defined(CONFIG_LCD_ST7789_320X240) && CONFIG_LCD_ST7789_320X240
+constexpr bool kDisplaySwapBytes = false;
+#else
+constexpr bool kDisplaySwapBytes = true;
+#endif
 
 lv_obj_t* TakeValidObject(lv_obj_t*& object) {
     if (object != nullptr && lv_obj_is_valid(object)) {
@@ -33,14 +50,100 @@ lv_obj_t* TakeValidObject(lv_obj_t*& object) {
     return nullptr;
 }
 
-bool IsPersistentContentOverlay(lv_obj_t* object) {
+bool ObjectHasTag(lv_obj_t* object, const void* tag) {
     if (object == nullptr || !lv_obj_is_valid(object)) {
         return false;
     }
 
-    const void* user_data = lv_obj_get_user_data(object);
-    return user_data != nullptr &&
-           strcmp(static_cast<const char*>(user_data), PREVIEW_OVERLAY_TAG) == 0;
+    return lv_obj_get_user_data(object) == tag;
+}
+
+bool IsMessageTag(const void* tag) {
+    return tag == kMessageRoleUser ||
+           tag == kMessageRoleAssistant ||
+           tag == kMessageRoleSystem ||
+           tag == kMessageRoleImage;
+}
+
+lv_obj_t* GetMessageBubbleFromEntry(lv_obj_t* entry) {
+    if (entry == nullptr || !lv_obj_is_valid(entry)) {
+        return nullptr;
+    }
+
+    if (IsMessageTag(lv_obj_get_user_data(entry))) {
+        return entry;
+    }
+
+    if (lv_obj_get_child_cnt(entry) == 0) {
+        return nullptr;
+    }
+
+    lv_obj_t* bubble = lv_obj_get_child(entry, 0);
+    if (bubble == nullptr || !lv_obj_is_valid(bubble)) {
+        return nullptr;
+    }
+
+    return IsMessageTag(lv_obj_get_user_data(bubble)) ? bubble : nullptr;
+}
+
+lv_obj_t* GetMessageLabelFromBubble(lv_obj_t* bubble) {
+    if (bubble == nullptr || !lv_obj_is_valid(bubble) || lv_obj_get_child_cnt(bubble) == 0) {
+        return nullptr;
+    }
+
+    lv_obj_t* label = lv_obj_get_child(bubble, 0);
+    return (label != nullptr && lv_obj_is_valid(label)) ? label : nullptr;
+}
+
+void UpdateMessageBubbleText(lv_obj_t* content_obj, lv_obj_t* bubble, lv_obj_t* label,
+                             const char* content, const lv_font_t* text_font) {
+    if (bubble == nullptr || !lv_obj_is_valid(bubble) ||
+        label == nullptr || !lv_obj_is_valid(label) ||
+        content == nullptr || text_font == nullptr) {
+        return;
+    }
+
+    lv_label_set_text(label, content);
+
+    lv_coord_t text_width = lv_txt_get_width(content, strlen(content), text_font, 0);
+    lv_coord_t available_width = 0;
+    if (content_obj != nullptr && lv_obj_is_valid(content_obj)) {
+        available_width = lv_obj_get_content_width(content_obj);
+    }
+
+    if (available_width <= 0) {
+        lv_display_t* display = lv_obj_get_display(content_obj != nullptr ? content_obj : bubble);
+        if (display != nullptr) {
+            available_width = lv_display_get_horizontal_resolution(display);
+        }
+    }
+
+    if (available_width <= 0) {
+        available_width = LV_HOR_RES;
+    }
+
+    lv_coord_t max_width = available_width * 85 / 100 - 16;
+    const lv_coord_t min_width = 20;
+    if (max_width < min_width) {
+        max_width = min_width;
+    }
+    if (text_width < min_width) {
+        text_width = min_width;
+    }
+
+    const lv_coord_t bubble_width = text_width < max_width ? text_width : max_width;
+    lv_obj_set_width(label, bubble_width);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(bubble, bubble_width);
+    lv_obj_set_height(bubble, LV_SIZE_CONTENT);
+}
+
+lv_opa_t GetMessageBubbleOpa(int width, int height) {
+    return (width == 320 && height == 240) ? kCompactSafeMessageBubbleOpa : kDefaultMessageBubbleOpa;
+}
+
+lv_opa_t GetStatusBarOpa(int width, int height) {
+    return (width == 320 && height == 240) ? kCompactSafeStatusBarOpa : kDefaultStatusBarOpa;
 }
 
 lv_obj_t* FindFirstMessageChild(lv_obj_t* parent) {
@@ -51,7 +154,7 @@ lv_obj_t* FindFirstMessageChild(lv_obj_t* parent) {
     const uint32_t child_count = lv_obj_get_child_cnt(parent);
     for (uint32_t i = 0; i < child_count; ++i) {
         lv_obj_t* child = lv_obj_get_child(parent, i);
-        if (!IsPersistentContentOverlay(child)) {
+        if (GetMessageBubbleFromEntry(child) != nullptr) {
             return child;
         }
     }
@@ -66,7 +169,7 @@ lv_obj_t* FindLastMessageChild(lv_obj_t* parent) {
 
     for (int32_t i = static_cast<int32_t>(lv_obj_get_child_cnt(parent)) - 1; i >= 0; --i) {
         lv_obj_t* child = lv_obj_get_child(parent, i);
-        if (!IsPersistentContentOverlay(child)) {
+        if (GetMessageBubbleFromEntry(child) != nullptr) {
             return child;
         }
     }
@@ -82,7 +185,7 @@ uint32_t CountMessageChildren(lv_obj_t* parent) {
     uint32_t count = 0;
     const uint32_t child_count = lv_obj_get_child_cnt(parent);
     for (uint32_t i = 0; i < child_count; ++i) {
-        if (!IsPersistentContentOverlay(lv_obj_get_child(parent, i))) {
+        if (GetMessageBubbleFromEntry(lv_obj_get_child(parent, i)) != nullptr) {
             ++count;
         }
     }
@@ -231,7 +334,7 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
             .buff_dma = 1,
             .buff_spiram = 0,
             .sw_rotate = 0,
-            .swap_bytes = 1,
+            .swap_bytes = kDisplaySwapBytes,
             .full_refresh = 0,
             .direct_mode = 0,
         },
@@ -479,7 +582,7 @@ void LcdDisplay::SetupUI() {
     lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_FLOATING);
     lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_user_data(preview_image_, (void*)PREVIEW_OVERLAY_TAG);
+    lv_obj_set_user_data(preview_image_, (void*)kPreviewOverlayTag);
     lv_obj_center(preview_image_);
     lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
 }
@@ -500,7 +603,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
         lv_obj_t* first_child = FindFirstMessageChild(content_obj);
         lv_obj_t* last_child = FindLastMessageChild(content_obj);
         if (first_child != nullptr) {
-            lv_obj_del(first_child);
+            lv_obj_delete_async(first_child);
         }
         // Scroll to the last message immediately
         if (last_child != nullptr && last_child != first_child && lv_obj_is_valid(last_child)) {
@@ -510,20 +613,23 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     
     // 折叠系统消息（如果是系统消息，检查最后一个消息是否也是系统消息）
     if (strcmp(role, "system") == 0) {
-        lv_obj_t* last_container = FindLastMessageChild(content_obj);
-        if (last_container != nullptr) {
-            // 获取最后一个消息容器
-            if (lv_obj_get_child_cnt(last_container) > 0) {
-                // 获取容器内的气泡
-                lv_obj_t* last_bubble = lv_obj_get_child(last_container, 0);
-                if (last_bubble != nullptr) {
-                    // 检查气泡类型是否为系统消息
-                    void* bubble_type_ptr = lv_obj_get_user_data(last_bubble);
-                    if (bubble_type_ptr != nullptr && strcmp((const char*)bubble_type_ptr, "system") == 0) {
-                        // 如果最后一个消息也是系统消息，则删除它
-                        lv_obj_del(last_container);
-                    }
-                }
+        lv_obj_t* last_entry = FindLastMessageChild(content_obj);
+        lv_obj_t* last_bubble = GetMessageBubbleFromEntry(last_entry);
+        if (ObjectHasTag(last_bubble, kMessageRoleSystem)) {
+            if (content[0] == '\0') {
+                chat_message_label_ = nullptr;
+                lv_obj_delete_async(last_entry);
+                return;
+            }
+
+            auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
+            auto text_font = lvgl_theme->text_font()->font();
+            lv_obj_t* last_label = GetMessageLabelFromBubble(last_bubble);
+            if (last_label != nullptr) {
+                UpdateMessageBubbleText(content_obj, last_bubble, last_label, content, text_font);
+                chat_message_label_ = last_label;
+                lv_obj_scroll_to_view_recursive(last_entry, LV_ANIM_OFF);
+                return;
             }
         }
     } else {
@@ -541,6 +647,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
 
     auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
     auto text_font = lvgl_theme->text_font()->font();
+    const lv_opa_t bubble_bg_opa = GetMessageBubbleOpa(width_, height_);
 
     // Create a message bubble
     lv_obj_t* msg_bubble = lv_obj_create(content_obj);
@@ -551,46 +658,18 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
 
     // Create the message text
     lv_obj_t* msg_text = lv_label_create(msg_bubble);
-    lv_label_set_text(msg_text, content);
-    
-    // 计算文本实际宽度
-    lv_coord_t text_width = lv_txt_get_width(content, strlen(content), text_font, 0);
-
-    // 计算气泡宽度
-    lv_coord_t max_width = LV_HOR_RES * 85 / 100 - 16;  // 屏幕宽度的85%
-    lv_coord_t min_width = 20;  
-    lv_coord_t bubble_width;
-    
-    // 确保文本宽度不小于最小宽度
-    if (text_width < min_width) {
-        text_width = min_width;
-    }
-
-    // 如果文本宽度小于最大宽度，使用文本宽度
-    if (text_width < max_width) {
-        bubble_width = text_width; 
-    } else {
-        bubble_width = max_width;
-    }
-    
-    // 设置消息文本的宽度
-    lv_obj_set_width(msg_text, bubble_width);  // 减去padding
-    lv_label_set_long_mode(msg_text, LV_LABEL_LONG_WRAP);
-
-    // 设置气泡宽度
-    lv_obj_set_width(msg_bubble, bubble_width);
-    lv_obj_set_height(msg_bubble, LV_SIZE_CONTENT);
+    UpdateMessageBubbleText(content_obj, msg_bubble, msg_text, content, text_font);
 
     // Set alignment and style based on message role
     if (strcmp(role, "user") == 0) {
         // User messages are right-aligned with green background
         lv_obj_set_style_bg_color(msg_bubble, lvgl_theme->user_bubble_color(), 0);
-        lv_obj_set_style_bg_opa(msg_bubble, LV_OPA_70, 0);
+        lv_obj_set_style_bg_opa(msg_bubble, bubble_bg_opa, 0);
         // Set text color for contrast
         lv_obj_set_style_text_color(msg_text, lvgl_theme->text_color(), 0);
         
         // 设置自定义属性标记气泡类型
-        lv_obj_set_user_data(msg_bubble, (void*)"user");
+        lv_obj_set_user_data(msg_bubble, (void*)kMessageRoleUser);
         
         // Set appropriate width for content
         lv_obj_set_width(msg_bubble, LV_SIZE_CONTENT);
@@ -601,12 +680,12 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     } else if (strcmp(role, "assistant") == 0) {
         // Assistant messages are left-aligned with white background
         lv_obj_set_style_bg_color(msg_bubble, lvgl_theme->assistant_bubble_color(), 0);
-        lv_obj_set_style_bg_opa(msg_bubble, LV_OPA_70, 0);
+        lv_obj_set_style_bg_opa(msg_bubble, bubble_bg_opa, 0);
         // Set text color for contrast
         lv_obj_set_style_text_color(msg_text, lvgl_theme->text_color(), 0);
         
         // 设置自定义属性标记气泡类型
-        lv_obj_set_user_data(msg_bubble, (void*)"assistant");
+        lv_obj_set_user_data(msg_bubble, (void*)kMessageRoleAssistant);
         
         // Set appropriate width for content
         lv_obj_set_width(msg_bubble, LV_SIZE_CONTENT);
@@ -617,12 +696,12 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     } else if (strcmp(role, "system") == 0) {
         // System messages are center-aligned with light gray background
         lv_obj_set_style_bg_color(msg_bubble, lvgl_theme->system_bubble_color(), 0);
-        lv_obj_set_style_bg_opa(msg_bubble, LV_OPA_70, 0);
+        lv_obj_set_style_bg_opa(msg_bubble, bubble_bg_opa, 0);
         // Set text color for contrast
         lv_obj_set_style_text_color(msg_text, lvgl_theme->system_text_color(), 0);
         
         // 设置自定义属性标记气泡类型
-        lv_obj_set_user_data(msg_bubble, (void*)"system");
+        lv_obj_set_user_data(msg_bubble, (void*)kMessageRoleSystem);
         
         // Set appropriate width for content
         lv_obj_set_width(msg_bubble, LV_SIZE_CONTENT);
@@ -761,10 +840,10 @@ void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
     
     // Set image bubble background color (similar to system message)
     lv_obj_set_style_bg_color(img_bubble, lvgl_theme->assistant_bubble_color(), 0);
-    lv_obj_set_style_bg_opa(img_bubble, LV_OPA_70, 0);
+    lv_obj_set_style_bg_opa(img_bubble, GetMessageBubbleOpa(width_, height_), 0);
     
     // 设置自定义属性标记气泡类型
-    lv_obj_set_user_data(img_bubble, (void*)"image");
+    lv_obj_set_user_data(img_bubble, (void*)kMessageRoleImage);
 
     // Create the image object inside the bubble
     lv_obj_t* preview_image = lv_image_create(img_bubble);
@@ -939,7 +1018,7 @@ void LcdDisplay::SetTheme(Theme* theme) {
     }
     
     // Update status bar background color with 50% opacity
-    lv_obj_set_style_bg_opa(status_bar_, LV_OPA_50, 0);
+    lv_obj_set_style_bg_opa(status_bar_, GetStatusBarOpa(width_, height_), 0);
     lv_obj_set_style_bg_color(status_bar_, lvgl_theme->background_color(), 0);
     lv_obj_set_style_text_font(status_bar_, text_font, 0);
     
@@ -986,18 +1065,16 @@ void LcdDisplay::SetTheme(Theme* theme) {
         if (bubble == nullptr) continue;
         
         // 使用保存的用户数据来识别气泡类型
-        void* bubble_type_ptr = lv_obj_get_user_data(bubble);
+        const void* bubble_type_ptr = lv_obj_get_user_data(bubble);
         if (bubble_type_ptr != nullptr) {
-            const char* bubble_type = static_cast<const char*>(bubble_type_ptr);
-            
             // 根据气泡类型应用正确的颜色
-            if (strcmp(bubble_type, "user") == 0) {
+            if (bubble_type_ptr == kMessageRoleUser) {
                 lv_obj_set_style_bg_color(bubble, lvgl_theme->user_bubble_color(), 0);
-            } else if (strcmp(bubble_type, "assistant") == 0) {
+            } else if (bubble_type_ptr == kMessageRoleAssistant) {
                 lv_obj_set_style_bg_color(bubble, lvgl_theme->assistant_bubble_color(), 0); 
-            } else if (strcmp(bubble_type, "system") == 0) {
+            } else if (bubble_type_ptr == kMessageRoleSystem) {
                 lv_obj_set_style_bg_color(bubble, lvgl_theme->system_bubble_color(), 0);
-            } else if (strcmp(bubble_type, "image") == 0) {
+            } else if (bubble_type_ptr == kMessageRoleImage) {
                 lv_obj_set_style_bg_color(bubble, lvgl_theme->system_bubble_color(), 0);
             }
             
@@ -1009,7 +1086,7 @@ void LcdDisplay::SetTheme(Theme* theme) {
                 lv_obj_t* text = lv_obj_get_child(bubble, 0);
                 if (text != nullptr) {
                     // 根据气泡类型设置文本颜色
-                    if (strcmp(bubble_type, "system") == 0) {
+                    if (bubble_type_ptr == kMessageRoleSystem) {
                         lv_obj_set_style_text_color(text, lvgl_theme->system_text_color(), 0);
                     } else {
                         lv_obj_set_style_text_color(text, lvgl_theme->text_color(), 0);

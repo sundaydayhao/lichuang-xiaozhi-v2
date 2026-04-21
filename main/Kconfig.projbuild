@@ -49,102 +49,16 @@ config BOARD_TYPE_BREAD_COMPACT_ML307CAMTOU
     help
         This project is fixed to the bread-compact-ml307camtou board.
 
-choice ESP_S3_LCD_EV_Board_Version_TYPE
-    depends on BOARD_TYPE_ESP_S3_LCD_EV_Board
-    prompt "EV_BOARD Type"
-    default ESP_S3_LCD_EV_Board_1p4
-    help
-        开发板硬件版本型号选择
-    config ESP_S3_LCD_EV_Board_1p4
-        bool "乐鑫ESP32_S3_LCD_EV_Board-MB_V1.4"
-    config ESP_S3_LCD_EV_Board_1p5
-        bool "乐鑫ESP32_S3_LCD_EV_Board-MB_V1.5"
-endchoice
-
-choice DISPLAY_OLED_TYPE
-    depends on BOARD_TYPE_BREAD_COMPACT_WIFI || BOARD_TYPE_BREAD_COMPACT_ML307 || BOARD_TYPE_BREAD_COMPACT_ESP32
-    prompt "OLED Type"
-    default OLED_SSD1306_128X32
-    help
-        OLED 屏幕类型选择
-    config OLED_SSD1306_128X32
-        bool "SSD1306, 分辨率128*32"
-    config OLED_SSD1306_128X64
-        bool "SSD1306, 分辨率128*64"
-    config OLED_SH1106_128X64
-        bool "SH1106, 分辨率128*64"
-endchoice
-
 choice DISPLAY_LCD_TYPE
-    depends on BOARD_TYPE_BREAD_COMPACT_WIFI_LCD || BOARD_TYPE_BREAD_COMPACT_ESP32_LCD || BOARD_TYPE_ESP32_CGC || BOARD_TYPE_ESP32P4_NANO || BOARD_TYPE_ESP32P4_WIFI6_Touch_LCD_XC || BOARD_TYPE_BREAD_COMPACT_WIFI_CAM
+    depends on BOARD_TYPE_BREAD_COMPACT_ML307CAMTOU
     prompt "LCD Type"
-    default LCD_ST7789_240X320
+    default LCD_ST7789_284X240
     help
-        屏幕类型选择
-    config LCD_ST7789_240X320
-        bool "ST7789, 分辨率240*320, IPS"
-    config LCD_ST7789_240X320_NO_IPS
-        bool "ST7789, 分辨率240*320, 非IPS"
-    config LCD_ST7789_170X320
-        bool "ST7789, 分辨率170*320"
-    config LCD_ST7789_172X320
-        bool "ST7789, 分辨率172*320"
-    config LCD_ST7789_240X280
-        bool "ST7789, 分辨率240*280"
-    config LCD_ST7789_240X240
-        bool "ST7789, 分辨率240*240"
-    config LCD_ST7789_240X240_7PIN
-        bool "ST7789, 分辨率240*240, 7PIN"
-    config LCD_ST7789_240X135
-        bool "ST7789, 分辨率240*135"
-    config LCD_ST7735_128X160
-        bool "ST7735, 分辨率128*160"
-    config LCD_ST7735_128X128
-        bool "ST7735, 分辨率128*128"
-    config LCD_ST7796_320X480
-        bool "ST7796, 分辨率320*480 IPS"
-    config LCD_ST7796_320X480_NO_IPS
-        bool "ST7796, 分辨率320*480, 非IPS"
-    config LCD_ILI9341_240X320
-        bool "ILI9341, 分辨率240*320"
-    config LCD_ILI9341_240X320_NO_IPS
-        bool "ILI9341, 分辨率240*320, 非IPS"
-    config LCD_GC9A01_240X240
-        bool "GC9A01, 分辨率240*240, 圆屏"
-    config LCD_TYPE_800_1280_10_1_INCH
-        bool "Waveshare 101M-8001280-IPS-CT-K Display"
-    config LCD_TYPE_800_1280_10_1_INCH_A
-        bool "Waveshare 10.1-DSI-TOUCH-A Display"
-    config LCD_TYPE_800_800_3_4_INCH
-        bool "Waveshare ESP32-P4-WIFI6-Touch-LCD-3.4C with 800*800 3.4inch round display"
-    config LCD_TYPE_720_720_4_INCH
-        bool "Waveshare ESP32-P4-WIFI6-Touch-LCD-4C with 720*720 4inch round display"
-    config LCD_CUSTOM
-        bool "自定义屏幕参数"
-endchoice
-
-choice DISPLAY_ESP32S3_KORVO2_V3
-    depends on BOARD_TYPE_ESP32S3_KORVO2_V3
-    prompt "ESP32S3_KORVO2_V3 LCD Type"
-    default ESP32S3_KORVO2_V3_LCD_ST7789
-    help
-        屏幕类型选择
-    config ESP32S3_KORVO2_V3_LCD_ST7789
-        bool "ST7789, 分辨率240*280"
-    config ESP32S3_KORVO2_V3_LCD_ILI9341
-        bool "ILI9341, 分辨率240*320"
-endchoice
-
-choice DISPLAY_ESP32S3_AUDIO_BOARD
-    depends on BOARD_TYPE_ESP32S3_AUDIO_BOARD
-    prompt "ESP32S3_AUDIO_BOARD LCD Type"
-    default AUDIO_BOARD_LCD_JD9853
-    help
-        屏幕类型选择
-    config AUDIO_BOARD_LCD_JD9853
-        bool "JD9853, 分辨率320*172"
-    config AUDIO_BOARD_LCD_ST7789
-        bool "ST7789, 分辨率240*320"
+        屏幕分辨率选择
+    config LCD_ST7789_284X240
+        bool "ST7789, 分辨率284*240"
+    config LCD_ST7789_320X240
+        bool "ST7789, 分辨率320*240"
 endchoice
 
 config USE_AFE_WAKE_WORD
@@ -193,13 +107,9 @@ config USE_AUDIO_PROCESSOR
 config USE_DEVICE_AEC
     bool "Enable Device-Side AEC"
     default n
-        depends on USE_AUDIO_PROCESSOR && (BOARD_TYPE_ESP_BOX_3 || BOARD_TYPE_ESP_BOX || BOARD_TYPE_ESP_BOX_LITE \
-        || BOARD_TYPE_LICHUANG_DEV || BOARD_TYPE_ESP32S3_KORVO2_V3 || BOARD_TYPE_ESP32S3_Touch_AMOLED_1_75 \
-        || BOARD_TYPE_ESP32S3_Touch_AMOLED_2_06 || BOARD_TYPE_ESP32S3_Touch_LCD_4B || BOARD_TYPE_ESP32P4_WIFI6_Touch_LCD_4B \
-        || BOARD_TYPE_ESP32P4_WIFI6_Touch_LCD_XC || BOARD_TYPE_ESP_S3_LCD_EV_Board_2 || BOARD_TYPE_YUNLIAO_S3 \
-        || BOARD_TYPE_ECHOEAR)
+    depends on USE_AUDIO_PROCESSOR && n
     help
-        因为性能不够，不建议和微信聊天界面风格同时开启
+        当前固定板型不支持设备端 AEC，保留配置项仅为兼容历史逻辑
 
 config USE_SERVER_AEC
     bool "Enable Server-Side AEC (Unstable)"
@@ -232,17 +142,5 @@ config RECEIVE_CUSTOM_MESSAGE
     default n
     help
         启用接收自定义消息功能，允许设备接收来自服务器的自定义消息（最好通过 MQTT 协议）
-
-choice I2S_TYPE_TAIJIPI_S3
-    depends on BOARD_TYPE_ESP32S3_Taiji_Pi
-    prompt "taiji-pi-S3 I2S Type"
-    default TAIJIPAI_I2S_TYPE_STD
-    help
-        I2S 类型选择
-    config TAIJIPAI_I2S_TYPE_STD
-        bool "I2S Type STD"
-    config TAIJIPAI_I2S_TYPE_PDM
-        bool "I2S Type PDM"
-endchoice
 
 endmenu

@@ -185,76 +185,67 @@ static esp_err_t panel_st7789_init(esp_lcd_panel_t *panel)
     ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, LCD_CMD_SLPOUT, NULL, 0), TAG,
                         "io tx param failed");
     vTaskDelay(pdMS_TO_TICKS(120));
-    // Memory Access Control (0x36)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0x36, (uint8_t[]){0x00}, 1), TAG,
-                        "io tx param failed");
-    
-    // Interface Pixel Format (0x3A) - RGB565
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0x3A, (uint8_t[]){0x05}, 1), TAG,
-                        "io tx param failed");
-    
+
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, LCD_CMD_MADCTL, (uint8_t[]) {
+        st7789->madctl_val,
+    }, 1), TAG, "io tx param failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, LCD_CMD_COLMOD, (uint8_t[]) {
+        st7789->colmod_val,
+    }, 1), TAG, "io tx param failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, ST7789_CMD_RAMCTRL, (uint8_t[]) {
+        st7789->ramctl_val_1, st7789->ramctl_val_2
+    }, 2), TAG, "io tx param failed");
+
     // Porch Setting (0xB2)
     ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xB2, (uint8_t[]){0x0C, 0x0C, 0x00, 0x33, 0x33}, 5), TAG,
                         "io tx param failed");
-    
+
     // Gate Control (0xB7)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xB7, (uint8_t[]){0x05}, 1), TAG,
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xB7, (uint8_t[]){0x35}, 1), TAG,
                         "io tx param failed");
-    
+
     // VCOMS Setting (0xBB)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xBB, (uint8_t[]){0x21}, 1), TAG,
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xBB, (uint8_t[]){0x19}, 1), TAG,
                         "io tx param failed");
-    
+
     // LCM Control (0xC0)
     ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xC0, (uint8_t[]){0x2C}, 1), TAG,
                         "io tx param failed");
-    
+
     // VDV and VRH Command Enable (0xC2)
     ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xC2, (uint8_t[]){0x01}, 1), TAG,
                         "io tx param failed");
-    
+
     // VRH Set (0xC3)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xC3, (uint8_t[]){0x15}, 1), TAG,
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xC3, (uint8_t[]){0x12}, 1), TAG,
                         "io tx param failed");
-    
-    // VDV Set (0xC6)
+
+    // VDV Set (0xC4)
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xC4, (uint8_t[]){0x20}, 1), TAG,
+                        "io tx param failed");
+
+    // VCOM Offset Set (0xC6)
     ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xC6, (uint8_t[]){0x0F}, 1), TAG,
                         "io tx param failed");
-    
+
     // Power Control 1 (0xD0)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xD0, (uint8_t[]){0xA7}, 1), TAG,
-                        "io tx param failed");
-    
-    // Power Control 2 (0xD0) - second write
     ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xD0, (uint8_t[]){0xA4, 0xA1}, 2), TAG,
                         "io tx param failed");
-    
-    // Power Control 3 (0xD6)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xD6, (uint8_t[]){0xA1}, 1), TAG,
-                        "io tx param failed");
-    
+
     // Positive Voltage Gamma Control (0xE0)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xE0, (uint8_t[]){0xF0, 0x05, 0x0E, 0x08, 0x0A, 0x17, 0x39, 0x54, 0x4E, 0x37, 0x12, 0x12, 0x31, 0x37}, 14), TAG,
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xE0, (uint8_t[]){
+        0xD0, 0x04, 0x0D, 0x11, 0x13, 0x2B, 0x3F, 0x54, 0x4C, 0x18, 0x0D, 0x0B, 0x1F, 0x23
+    }, 14), TAG,
                         "io tx param failed");
-    
+
     // Negative Voltage Gamma Control (0xE1)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xE1, (uint8_t[]){0xF0, 0x10, 0x14, 0x0D, 0x0B, 0x05, 0x39, 0x44, 0x4D, 0x38, 0x14, 0x14, 0x2E, 0x35}, 14), TAG,
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xE1, (uint8_t[]){
+        0xD0, 0x04, 0x0C, 0x11, 0x13, 0x2C, 0x3F, 0x44, 0x51, 0x2F, 0x1F, 0x1F, 0x20, 0x23
+    }, 14), TAG,
                         "io tx param failed");
-    
-    // Gate Control (0xE4)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xE4, (uint8_t[]){0x23, 0x00, 0x00}, 3), TAG,
-                        "io tx param failed");
-    
-    // Display Inversion On (0x21)
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0x21, NULL, 0), TAG,
-                        "io tx param failed");
-    
+
     // Display On (0x29)
     ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0x29, NULL, 0), TAG,
-                        "io tx param failed");
-    
-    // Memory Write (0x2C) - prepare for data
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0x2C, NULL, 0), TAG,
                         "io tx param failed");
 
     return ESP_OK;
