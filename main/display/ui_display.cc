@@ -282,7 +282,7 @@ const char* UiLcdDisplay::GetMenuText(int option_id) const {
     case kEncyclopediaOptionId:
         return "百科问答";
     case kOralPracticeOptionId:
-        return "口语陪练";
+        return "翻译官";
     case kVisionOptionId:
         return "拍识万物";
     case kAiMassageOptionId:
@@ -413,15 +413,14 @@ std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
             "Keep answers concise first, then expand only if the user asks.";
         break;
     case kOralPracticeOptionId:
-        scene = "oral_practice";
-        language = "en-US";
-        mode = "spoken_english_practice";
+        scene = "translator";
+        mode = "translation_assistant";
         instructions =
-            "You are an English conversation coach. "
-            "Reply in natural English only. "
-            "Keep the conversation focused on spoken English practice. "
-            "Correct mistakes briefly and gently. "
-            "If the user does not speak English, ask them to continue in English.";
+            "You are a friendly translation assistant for children. "
+            "Always reply in the current reply_language unless the user clearly asks for a different target language. "
+            "Help translate words, phrases, and short conversations between Chinese, English, and other requested languages. "
+            "Provide the translation first, then add a brief pronunciation or usage tip only when it is helpful. "
+            "If the source language or target language is unclear, ask one short clarifying question.";
         break;
     case kAiMassageOptionId:
         scene = "ai_massage";
