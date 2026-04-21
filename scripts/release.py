@@ -3,6 +3,7 @@ import os
 import json
 import zipfile
 import argparse
+import shutil
 
 SUPPORTED_BOARD_CONFIG = "CONFIG_BOARD_TYPE_BREAD_COMPACT_ML307CAMTOU"
 SUPPORTED_BOARD_TYPE = "bread-compact-ml307camtou"
@@ -35,14 +36,54 @@ def merge_bin():
         print("merge bin failed")
         sys.exit(1)
 
-def zip_bin(board_type, project_version):
+def get_display_resolution(sdkconfig_path="sdkconfig"):
+    if not os.path.exists(sdkconfig_path):
+        return None
+
+    with open(sdkconfig_path) as f:
+        content = f.read()
+
+    if "CONFIG_LCD_ST7789_320X240=y" in content:
+        return "320x240"
+    if "CONFIG_LCD_ST7789_284X240=y" in content:
+        return "284x240"
+    return None
+
+def get_firmware_name(name, sdkconfig_path="sdkconfig"):
+    resolution = get_display_resolution(sdkconfig_path)
+    if resolution is None or name.endswith(f"-{resolution}"):
+        return name
+    return f"{name}-{resolution}"
+
+def export_bin(board_type, project_version):
     if not os.path.exists("releases"):
         os.makedirs("releases")
-    output_path = f"releases/v{project_version}_{board_type}.zip"
+
+    firmware_name = get_firmware_name(board_type)
+    output_path = f"releases/v{project_version}_{firmware_name}.bin"
+    shutil.copyfile("build/merged-binary.bin", output_path)
+    print(f"export bin to {output_path} done")
+    return firmware_name, output_path
+
+def export_merged_bin(board_type, project_version):
+    if not os.path.exists("releases"):
+        os.makedirs("releases")
+
+    firmware_name = get_firmware_name(board_type)
+    output_path = f"releases/v{project_version}_{firmware_name}_merged.bin"
+    shutil.copyfile("build/merged-binary.bin", output_path)
+    print(f"export merged bin to {output_path} done")
+    return firmware_name, output_path
+
+def zip_bin(board_type, project_version):
+    firmware_name, bin_path = export_bin(board_type, project_version)
+    _, merged_bin_path = export_merged_bin(board_type, project_version)
+    output_path = f"releases/v{project_version}_{firmware_name}.zip"
     if os.path.exists(output_path):
         os.remove(output_path)
     with zipfile.ZipFile(output_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
-        zipf.write("build/merged-binary.bin", arcname="merged-binary.bin")
+        zipf.write(bin_path, arcname=os.path.basename(bin_path))
+        zipf.write(merged_bin_path, arcname=os.path.basename(merged_bin_path))
     print(f"zip bin to {output_path} done")
     
 
@@ -80,9 +121,11 @@ def release(board_type, board_config, config_filename="config.json"):
         name = build["name"]
         if not name.startswith(board_type):
             raise ValueError(f"name {name} 必须以 {board_type} 开头")
-        output_path = f"releases/v{project_version}_{name}.zip"
-        if os.path.exists(output_path):
-            print(f"跳过 {board_type} 因为 {output_path} 已存在")
+        zip_output_path = f"releases/v{project_version}_{name}.zip"
+        bin_output_path = f"releases/v{project_version}_{name}.bin"
+        merged_output_path = f"releases/v{project_version}_{name}_merged.bin"
+        if os.path.exists(zip_output_path) and os.path.exists(bin_output_path) and os.path.exists(merged_output_path):
+            print(f"跳过 {board_type} 因为 {zip_output_path}、{bin_output_path}、{merged_output_path} 已存在")
             continue
 
         sdkconfig_append = [f"{board_config}=y"]

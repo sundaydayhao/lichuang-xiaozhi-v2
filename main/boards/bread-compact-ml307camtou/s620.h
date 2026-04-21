@@ -23,6 +23,8 @@ public:
     int GetBatteryLevel();
 
 private:
+    bool MarkUnavailable(const char* operation);
+
     // S620寄存器地址
     static constexpr uint8_t REG_VERSION = 0x01;      // 版本寄存器
     static constexpr uint8_t REG_STATUS = 0x0A;       // 系统状态指示（bit0=充电，bit1=放电）
@@ -39,7 +41,7 @@ private:
     static constexpr int VOLTAGE_MAX = 4200;  // 最高电压（mV）
     
     bool initialized_ = false;
+    bool available_ = true;
 };
 
 #endif
-

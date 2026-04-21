@@ -23,6 +23,7 @@ private:
     std::string explain_token_;
     std::thread encoder_thread_;
     SemaphoreHandle_t capture_mutex_ = nullptr;  // 添加互斥锁，防止并发调用Capture
+    bool initialized_ = false;
 
     void SavePhotoToStorage();  // 保存照片到 storage 分区
 
@@ -55,6 +56,7 @@ public:
     Esp32Camera(const camera_config_t& config);
     ~Esp32Camera();
 
+    bool IsReady() const { return initialized_; }
     virtual void SetExplainUrl(const std::string& url, const std::string& token);
     virtual bool Capture();
     // 拍照并返回锁对象，用于在上传期间保持锁

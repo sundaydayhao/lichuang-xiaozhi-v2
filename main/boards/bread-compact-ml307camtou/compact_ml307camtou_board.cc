@@ -83,6 +83,8 @@ private:
     i2c_master_bus_handle_t i2c_bus_ = nullptr;
     S620* s620_ = nullptr;
     Esp32Camera* camera_ = nullptr;
+    bool camera_probe_attempted_ = false;
+    bool s620_unavailable_logged_ = false;
     std::mutex camera_mutex_;
     std::string pending_camera_explain_url_;
     std::string pending_camera_explain_token_;
@@ -248,9 +250,11 @@ private:
     }
 
     void InitializeCamera() {
-        if (camera_ != nullptr) {
+        if (camera_ != nullptr || camera_probe_attempted_) {
             return;
         }
+        camera_probe_attempted_ = true;
+
         camera_config_t config = {};
         config.pin_d0 = CAMERA_PIN_D0;
         config.pin_d1 = CAMERA_PIN_D1;
@@ -276,13 +280,23 @@ private:
         config.fb_count = 1;
         config.fb_location = CAMERA_FB_IN_PSRAM;
         config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-        camera_ = new Esp32Camera(config);
-        if (camera_ != nullptr) {
-            camera_->SetHMirror(CAMERA_MIRROR_X);
-            camera_->SetVFlip(CAMERA_FLIP_Y);
-            if (!pending_camera_explain_url_.empty()) {
-                camera_->SetExplainUrl(pending_camera_explain_url_, pending_camera_explain_token_);
-            }
+        auto* camera = new Esp32Camera(config);
+        if (camera == nullptr) {
+            ESP_LOGW(TAG, "Failed to allocate camera instance");
+            return;
+        }
+
+        if (!camera->IsReady()) {
+            ESP_LOGW(TAG, "Camera not detected, continuing without camera support");
+            delete camera;
+            return;
+        }
+
+        camera_ = camera;
+        camera_->SetHMirror(CAMERA_MIRROR_X);
+        camera_->SetVFlip(CAMERA_FLIP_Y);
+        if (!pending_camera_explain_url_.empty()) {
+            camera_->SetExplainUrl(pending_camera_explain_url_, pending_camera_explain_token_);
         }
     }
 
@@ -583,15 +597,14 @@ public:
 
     bool GetBatteryLevel(int& level, bool& charging, bool& discharging) override {
         if (s620_ == nullptr || !s620_->Initialize()) {
-            level = 100;
-            charging = false;
-            discharging = false;
-            if (s620_ != nullptr) {
-                ESP_LOGW(TAG, "S620初始化失败");
+            if (s620_ != nullptr && !s620_unavailable_logged_) {
+                ESP_LOGW(TAG, "S620 unavailable, skip battery status update");
+                s620_unavailable_logged_ = true;
             }
-            return true;
+            return false;
         }
 
+        s620_unavailable_logged_ = false;
         level = s620_->GetBatteryLevel();
         charging = s620_->IsCharging();
         discharging = s620_->IsDischarging();

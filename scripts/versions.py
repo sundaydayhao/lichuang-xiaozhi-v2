@@ -86,8 +86,22 @@ def find_app_partition(data):
                 }
     return None
 
+def find_merged_binary_path(dir_path):
+    preferred_path = os.path.join(dir_path, "merged-binary.bin")
+    if os.path.exists(preferred_path):
+        return preferred_path
+
+    for name in sorted(os.listdir(dir_path)):
+        if not name.endswith(".bin"):
+            continue
+        if name == "xiaozhi.bin":
+            continue
+        return os.path.join(dir_path, name)
+
+    raise FileNotFoundError(f"No merged firmware bin found in {dir_path}")
+
 def read_binary(dir_path):
-    merged_bin_path = os.path.join(dir_path, "merged-binary.bin")
+    merged_bin_path = find_merged_binary_path(dir_path)
     merged_bin_data = open(merged_bin_path, "rb").read()
 
     # find app partition

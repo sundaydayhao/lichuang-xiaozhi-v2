@@ -29,6 +29,8 @@ Esp32Camera::Esp32Camera(const camera_config_t& config) {
         return;
     }
 
+    initialized_ = true;
+
     sensor_t *s = esp_camera_sensor_get(); // 获取摄像头型号
     if (s->id.PID == GC0308_PID) {
         s->set_hmirror(s, 0);  // 这里控制摄像头镜像 写1镜像 写0不镜像
@@ -44,7 +46,9 @@ Esp32Camera::~Esp32Camera() {
         vSemaphoreDelete(capture_mutex_);
         capture_mutex_ = nullptr;
     }
-    esp_camera_deinit();
+    if (initialized_) {
+        esp_camera_deinit();
+    }
 }
 
 void Esp32Camera::SetExplainUrl(const std::string& url, const std::string& token) {
@@ -53,6 +57,11 @@ void Esp32Camera::SetExplainUrl(const std::string& url, const std::string& token
 }
 
 bool Esp32Camera::Capture() {
+    if (!initialized_) {
+        ESP_LOGW(TAG, "Camera is not ready");
+        return false;
+    }
+
     // 获取互斥锁，防止并发调用
     if (capture_mutex_ != nullptr) {
         if (xSemaphoreTake(capture_mutex_, pdMS_TO_TICKS(1000)) != pdTRUE) {
@@ -111,6 +120,11 @@ bool Esp32Camera::Capture() {
 }
 
 std::unique_ptr<Esp32Camera::CaptureLock> Esp32Camera::CaptureForExplain() {
+    if (!initialized_) {
+        ESP_LOGW(TAG, "Camera is not ready");
+        return nullptr;
+    }
+
     // 先获取锁
     auto lock = std::make_unique<CaptureLock>(&capture_mutex_);
     if (!lock->IsLocked()) {
@@ -162,6 +176,11 @@ std::unique_ptr<Esp32Camera::CaptureLock> Esp32Camera::CaptureForExplain() {
 }
 
 bool Esp32Camera::SetHMirror(bool enabled) {
+    if (!initialized_) {
+        ESP_LOGW(TAG, "Camera is not ready");
+        return false;
+    }
+
     sensor_t *s = esp_camera_sensor_get();
     if (s == nullptr) {
         ESP_LOGE(TAG, "Failed to get camera sensor");
@@ -179,6 +198,11 @@ bool Esp32Camera::SetHMirror(bool enabled) {
 }
 
 bool Esp32Camera::SetVFlip(bool enabled) {
+    if (!initialized_) {
+        ESP_LOGW(TAG, "Camera is not ready");
+        return false;
+    }
+
     sensor_t *s = esp_camera_sensor_get();
     if (s == nullptr) {
         ESP_LOGE(TAG, "Failed to get camera sensor");
@@ -219,6 +243,10 @@ bool Esp32Camera::SetVFlip(bool enabled) {
  * @warning 如果摄像头缓冲区为空或网络连接失败，将返回错误信息
  */
 std::string Esp32Camera::Explain(const std::string& question) {
+    if (!initialized_) {
+        throw std::runtime_error("Camera is not ready");
+    }
+
     if (explain_url_.empty()) {
         throw std::runtime_error("Image explain URL or token is not set");
     }

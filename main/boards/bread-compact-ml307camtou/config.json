@@ -2,7 +2,18 @@
     "target": "esp32s3",
     "builds": [
         {
-            "name": "bread-compact-ml307camtou"
+            "name": "bread-compact-ml307camtou-284x240",
+            "sdkconfig_append": [
+                "CONFIG_LCD_ST7789_284X240=y",
+                "# CONFIG_LCD_ST7789_320X240 is not set"
+            ]
+        },
+        {
+            "name": "bread-compact-ml307camtou-320x240",
+            "sdkconfig_append": [
+                "# CONFIG_LCD_ST7789_284X240 is not set",
+                "CONFIG_LCD_ST7789_320X240=y"
+            ]
         }
     ]
 }

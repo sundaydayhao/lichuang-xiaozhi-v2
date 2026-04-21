@@ -1,5 +1,7 @@
 .vscode/
 build*/
 managed_components/
+releases/
 sdkconfig
 sdkconfig.old
+*.pyc
