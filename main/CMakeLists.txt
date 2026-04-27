@@ -2,12 +2,6 @@
 set(SOURCES "audio/audio_codec.cc"
             "audio/audio_service.cc"
             "audio/codecs/no_audio_codec.cc"
-            "audio/codecs/box_audio_codec.cc"
-            "audio/codecs/es8311_audio_codec.cc"
-            "audio/codecs/es8374_audio_codec.cc"
-            "audio/codecs/es8388_audio_codec.cc"
-            "audio/codecs/es8389_audio_codec.cc"
-            "audio/codecs/dummy_audio_codec.cc"
             "audio/processors/audio_debugger.cc"
             "led/single_led.cc"
             "led/circular_strip.cc"
@@ -30,7 +24,6 @@ set(SOURCES "audio/audio_codec.cc"
             "display/lvgl_display/gif/gifdec.c"
             "display/lvgl_display/jpg/image_to_jpeg.cpp"
             "display/lvgl_display/jpg/jpeg_encoder.cpp"
-            "protocols/protocol.cc"
             "protocols/esp_xiaozhi_protocol.cc"
             "system_info.cc"
             "application.cc"
@@ -43,8 +36,18 @@ set(SOURCES "audio/audio_codec.cc"
 
 set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "protocols")
 
-# Add board common files
-file(GLOB BOARD_COMMON_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/boards/common/*.cc)
+# This project is fixed to one board, so keep only the common drivers it uses.
+set(BOARD_COMMON_SOURCES
+    "boards/common/afsk_demod.cc"
+    "boards/common/backlight.cc"
+    "boards/common/board.cc"
+    "boards/common/button.cc"
+    "boards/common/dual_network_board.cc"
+    "boards/common/esp32_camera.cc"
+    "boards/common/i2c_device.cc"
+    "boards/common/ml307_board.cc"
+    "boards/common/wifi_board.cc"
+)
 list(APPEND SOURCES ${BOARD_COMMON_SOURCES})
 list(APPEND INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/boards/common)
 

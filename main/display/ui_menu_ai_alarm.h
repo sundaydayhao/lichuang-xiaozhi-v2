@@ -41,7 +41,6 @@ public:
     static void ShowPanel(UiLcdDisplay& display);
     static void HidePanel(UiLcdDisplay& display);
     static bool IsPanelVisible(UiLcdDisplay& display);
-    static std::string BuildScenePayload(const UiLcdDisplay& display);
 
 private:
     static void ResetPanelObjects(UiLcdDisplay& display);

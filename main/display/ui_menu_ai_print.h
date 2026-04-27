@@ -23,7 +23,6 @@ public:
     static bool IsActive(const UiLcdDisplay& display);
     static const char* GetMenuText();
     static const char* GetMenuIconAssetName();
-    static std::string BuildScenePayload(const UiLcdDisplay& display);
     static bool HandleSpeechRecognized(UiLcdDisplay& display, const std::string& text);
     static void ShowListeningState(UiLcdDisplay& display);
     static void ShowGeneratingState(UiLcdDisplay& display);

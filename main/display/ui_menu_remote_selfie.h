@@ -55,7 +55,6 @@ public:
     static const char* GetMenuIconAssetName();
     static bool IsActive(const UiLcdDisplay& display);
     static bool IsScreenActive(const UiLcdDisplay& display);
-    static std::string BuildScenePayload();
     static void ShowScreen(UiLcdDisplay& display);
     static void Deactivate(UiLcdDisplay& display);
     static bool HandleSpeechRecognized(UiLcdDisplay& display, const std::string& text);
@@ -66,7 +65,6 @@ private:
     static bool ExecuteSpeechAction(UiLcdDisplay& display,
                                     UiMenuRemoteSelfieAction action,
                                     const char* success_notification);
-    static void RefreshSceneContext(UiLcdDisplay& display);
     static void UpdateControlStyles(UiLcdDisplay& display);
     static void ExecuteCameraAction(UiLcdDisplay& display);
     static void SuspendAudio(UiLcdDisplay& display);

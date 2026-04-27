@@ -23,34 +23,6 @@ constexpr uint32_t kRemoteSelfiePanelColor = 0xF2F2F2;
 constexpr uint32_t kRemoteSelfieInactiveColor = 0x979797;
 constexpr uint32_t kRemoteSelfieActiveColor = 0x39A856;
 
-std::string EscapeJsonString(const std::string& input) {
-    std::string escaped;
-    escaped.reserve(input.size() + 16);
-    for (char ch : input) {
-        switch (ch) {
-        case '\\':
-            escaped += "\\\\";
-            break;
-        case '"':
-            escaped += "\\\"";
-            break;
-        case '\n':
-            escaped += "\\n";
-            break;
-        case '\r':
-            escaped += "\\r";
-            break;
-        case '\t':
-            escaped += "\\t";
-            break;
-        default:
-            escaped += ch;
-            break;
-        }
-    }
-    return escaped;
-}
-
 std::string NormalizeSpeechText(const std::string& text) {
     std::string normalized;
     normalized.reserve(text.size());
@@ -89,49 +61,6 @@ bool UiMenuRemoteSelfie::IsActive(const UiLcdDisplay& display) {
 
 bool UiMenuRemoteSelfie::IsScreenActive(const UiLcdDisplay& display) {
     return display.remote_selfie_.screen != nullptr && lv_screen_active() == display.remote_selfie_.screen;
-}
-
-std::string UiMenuRemoteSelfie::BuildScenePayload() {
-    const std::string language = UiMenuSetting::GetSelectedLanguageCode();
-    const bool bluetooth_connected = BleHid::GetInstance().IsConnected();
-    std::string instructions =
-        "You are a remote selfie assistant for controlling a phone camera over Bluetooth HID. "
-        "Always reply in the current reply_language. "
-        "Only use these remote selfie tools while the remote selfie screen is active. ";
-
-    instructions += bluetooth_connected
-        ? "Bluetooth HID status is connected. "
-        : "Bluetooth HID status is disconnected. ";
-
-    instructions +=
-        "If Bluetooth HID is disconnected, do not call any remote selfie tool and reply exactly "
-        "请连接蓝牙Xiaozhi-HID. "
-        "When the user says 语音使能 or asks to enable voice control, call self.remote_selfie.enable_voice_control. "
-        "When the user asks to swipe up, or says 向上滑、往上滑、上滑, call self.remote_selfie.swipe_up. "
-        "When the user asks to swipe down, or says 向下滑、往下滑、下滑, call self.remote_selfie.swipe_down. "
-        "When the user asks to swipe left, or says 向左滑、往左滑、左滑, call self.remote_selfie.swipe_left. "
-        "When the user asks to swipe right, or says 向右滑、往右滑、右滑, call self.remote_selfie.swipe_right. "
-        "When the user asks to focus, tap the screen, tap the center button, or says 对焦、聚焦、点中间, "
-        "call self.remote_selfie.focus. "
-        "When the user asks to take a photo, or says 拍照、自拍、照相、拍一张、快门, "
-        "call self.remote_selfie.take_photo. "
-        "When the user asks to start recording, or says 开始录像、开始录制、录视频, "
-        "call self.remote_selfie.start_recording. "
-        "When the user asks to stop or end recording, or says 停止录像、结束录像、停止录制、结束录制, "
-        "call self.remote_selfie.stop_recording. "
-        "If a tool fails, tell the user to connect Bluetooth device Xiaozhi-HID first. "
-        "Keep replies short and action-oriented.";
-
-    std::string payload = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{";
-    payload += "\"scene\":\"remote_selfie\",";
-    payload += "\"language\":\"" + language + "\",";
-    payload += "\"reply_language\":\"" + language + "\",";
-    payload += "\"input_language\":\"" + language + "\",";
-    payload += "\"mode\":\"ble_camera_remote\",";
-    payload += "\"bluetooth_connected\":";
-    payload += bluetooth_connected ? "true," : "false,";
-    payload += "\"instructions\":\"" + EscapeJsonString(instructions) + "\"}}";
-    return payload;
 }
 
 void UiMenuRemoteSelfie::InitializeScreen(UiLcdDisplay& display) {
@@ -292,7 +221,6 @@ void UiMenuRemoteSelfie::ShowScreen(UiLcdDisplay& display) {
     }
 
     state.active = true;
-    Application::GetInstance().SetSceneContextPayload(BuildScenePayload());
 
     auto& ble_hid = BleHid::GetInstance();
     ble_hid.SetScreenActive(true);
@@ -336,7 +264,6 @@ void UiMenuRemoteSelfie::Deactivate(UiLcdDisplay& display) {
     state.active = false;
 
     auto& app = Application::GetInstance();
-    app.SetSceneContextPayload("");
     app.ExitChatSession();
 
     auto& ble_hid = BleHid::GetInstance();
@@ -442,14 +369,6 @@ bool UiMenuRemoteSelfie::ExecuteSpeechAction(UiLcdDisplay& display,
         display.ShowNotification(success_notification, 1000);
     }
     return true;
-}
-
-void UiMenuRemoteSelfie::RefreshSceneContext(UiLcdDisplay& display) {
-    if (!IsActive(display)) {
-        return;
-    }
-
-    Application::GetInstance().SetSceneContextPayload(BuildScenePayload());
 }
 
 void UiMenuRemoteSelfie::UpdateControlStyles(UiLcdDisplay& display) {
@@ -560,7 +479,6 @@ void UiMenuRemoteSelfie::UpdateBleStatus(UiLcdDisplay& display, bool connected) 
     auto& state = display.remote_selfie_;
     state.ble_connected = connected;
     if (state.ble_status_label == nullptr) {
-        RefreshSceneContext(display);
         return;
     }
 
@@ -573,7 +491,6 @@ void UiMenuRemoteSelfie::UpdateBleStatus(UiLcdDisplay& display, bool connected) 
     DisplayLockGuard lock(&display);
     lv_label_set_text(state.ble_status_label, status_text);
     UpdateControlStyles(display);
-    RefreshSceneContext(display);
 }
 
 void UiMenuRemoteSelfie::OnBleStatusAsync(void* user_data) {

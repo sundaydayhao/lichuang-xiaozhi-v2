@@ -50,16 +50,12 @@ mkdir main/boards/my-custom-board
 #define AUDIO_INPUT_SAMPLE_RATE  24000
 #define AUDIO_OUTPUT_SAMPLE_RATE 24000
 
-#define AUDIO_I2S_GPIO_MCLK GPIO_NUM_10
-#define AUDIO_I2S_GPIO_WS   GPIO_NUM_12
-#define AUDIO_I2S_GPIO_BCLK GPIO_NUM_8
-#define AUDIO_I2S_GPIO_DIN  GPIO_NUM_7
-#define AUDIO_I2S_GPIO_DOUT GPIO_NUM_11
-
-#define AUDIO_CODEC_PA_PIN       GPIO_NUM_13
-#define AUDIO_CODEC_I2C_SDA_PIN  GPIO_NUM_0
-#define AUDIO_CODEC_I2C_SCL_PIN  GPIO_NUM_1
-#define AUDIO_CODEC_ES8311_ADDR  ES8311_CODEC_DEFAULT_ADDR
+#define AUDIO_I2S_MIC_GPIO_WS   GPIO_NUM_1
+#define AUDIO_I2S_MIC_GPIO_SCK  GPIO_NUM_2
+#define AUDIO_I2S_MIC_GPIO_DIN  GPIO_NUM_42
+#define AUDIO_I2S_SPK_GPIO_DOUT GPIO_NUM_39
+#define AUDIO_I2S_SPK_GPIO_BCLK GPIO_NUM_40
+#define AUDIO_I2S_SPK_GPIO_LRCK GPIO_NUM_41
 
 // 按钮配置
 #define BOOT_BUTTON_GPIO        GPIO_NUM_9
@@ -118,12 +114,11 @@ mkdir main/boards/my-custom-board
 
 ```cpp
 #include "wifi_board.h"
-#include "codecs/es8311_audio_codec.h"
+#include "codecs/no_audio_codec.h"
 #include "display/lcd_display.h"
 #include "application.h"
 #include "button.h"
 #include "config.h"
-#include "mcp_server.h"
 
 #include <esp_log.h>
 #include <driver/i2c_master.h>
@@ -211,11 +206,6 @@ private:
                                     DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
     }
 
-    // MCP Tools 初始化
-    void InitializeTools() {
-        // 参考 MCP 文档
-    }
-
 public:
     // 构造函数
     MyCustomBoard() : boot_button_(BOOT_BUTTON_GPIO) {
@@ -223,24 +213,20 @@ public:
         InitializeSpi();
         InitializeDisplay();
         InitializeButtons();
-        InitializeTools();
         GetBacklight()->SetBrightness(100);
     }
 
     // 获取音频编解码器
     virtual AudioCodec* GetAudioCodec() override {
-        static Es8311AudioCodec audio_codec(
-            codec_i2c_bus_, 
-            I2C_NUM_0, 
-            AUDIO_INPUT_SAMPLE_RATE, 
+        static NoAudioCodecSimplex audio_codec(
+            AUDIO_INPUT_SAMPLE_RATE,
             AUDIO_OUTPUT_SAMPLE_RATE,
-            AUDIO_I2S_GPIO_MCLK, 
-            AUDIO_I2S_GPIO_BCLK, 
-            AUDIO_I2S_GPIO_WS, 
-            AUDIO_I2S_GPIO_DOUT, 
-            AUDIO_I2S_GPIO_DIN,
-            AUDIO_CODEC_PA_PIN, 
-            AUDIO_CODEC_ES8311_ADDR);
+            AUDIO_I2S_SPK_GPIO_BCLK,
+            AUDIO_I2S_SPK_GPIO_LRCK,
+            AUDIO_I2S_SPK_GPIO_DOUT,
+            AUDIO_I2S_MIC_GPIO_SCK,
+            AUDIO_I2S_MIC_GPIO_WS,
+            AUDIO_I2S_MIC_GPIO_DIN);
         return &audio_codec;
     }
 
@@ -269,29 +255,19 @@ DECLARE_BOARD(MyCustomBoard);
 
 ### 1. 显示屏
 
-项目支持多种显示屏驱动，包括:
-- ST7789 (SPI)
-- ILI9341 (SPI)
-- SH8601 (QSPI)
-- 等...
+当前项目固定使用 ST7789 SPI 屏幕，触摸控制器根据屏幕尺寸选择 CST816D 或 FT5X06。
 
 ### 2. 音频编解码器
 
-支持的编解码器包括:
-- ES8311 (常用)
-- ES7210 (麦克风阵列)
-- AW88298 (功放)
-- 等...
+当前项目使用 `NoAudioCodecSimplex/Duplex` 直接驱动 I2S 麦克风和扬声器。
 
 ### 3. 电源管理
 
-一些开发板使用电源管理芯片:
-- AXP2101
-- 其他可用的PMIC
+当前项目使用板载 S620 读取电池状态。
 
 ### 4. MCP设备控制
 
-可以添加各种MCP工具，让AI能够使用:
+MCP 工具通过 `espressif/esp_xiaozhi` 的 MCP engine 注册，让 AI 能够使用:
 - Speaker (扬声器控制)
 - Screen (屏幕亮度调节)
 - Battery (电池电量读取)
@@ -317,7 +293,7 @@ DECLARE_BOARD(MyCustomBoard);
 1. **显示屏不正常**：检查SPI配置、镜像设置和颜色反转设置
 2. **音频无输出**：检查I2S配置、PA使能引脚和编解码器地址
 3. **无法连接网络**：检查Wi-Fi凭据和网络配置
-4. **无法与服务器通信**：检查MQTT或WebSocket配置
+4. **无法与服务器通信**：检查 `esp_xiaozhi_chat_get_info()` 返回的连接配置
 
 ## 参考资料
 

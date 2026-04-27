@@ -2,9 +2,10 @@
 #define PROTOCOL_H
 
 #include <cJSON.h>
-#include <string>
+#include <cstdint>
 #include <functional>
-#include <chrono>
+#include <memory>
+#include <string>
 #include <vector>
 
 struct AudioStreamPacket {
@@ -13,22 +14,6 @@ struct AudioStreamPacket {
     uint32_t timestamp = 0;
     std::vector<uint8_t> payload;
 };
-
-struct BinaryProtocol2 {
-    uint16_t version;
-    uint16_t type;          // Message type (0: OPUS, 1: JSON)
-    uint32_t reserved;      // Reserved for future use
-    uint32_t timestamp;     // Timestamp in milliseconds (used for server-side AEC)
-    uint32_t payload_size;  // Payload size in bytes
-    uint8_t payload[];      // Payload data
-} __attribute__((packed));
-
-struct BinaryProtocol3 {
-    uint8_t type;
-    uint8_t reserved;
-    uint16_t payload_size;
-    uint8_t payload[];
-} __attribute__((packed));
 
 enum AbortReason {
     kAbortReasonNone,
@@ -51,28 +36,38 @@ public:
     inline int server_frame_duration() const {
         return server_frame_duration_;
     }
-    inline const std::string& session_id() const {
-        return session_id_;
-    }
 
-    void OnIncomingAudio(std::function<void(std::unique_ptr<AudioStreamPacket> packet)> callback);
-    void OnIncomingJson(std::function<void(const cJSON* root)> callback);
-    void OnAudioChannelOpened(std::function<void()> callback);
-    void OnAudioChannelClosed(std::function<void()> callback);
-    void OnNetworkError(std::function<void(const std::string& message)> callback);
-    void OnConnected(std::function<void()> callback);
-    void OnDisconnected(std::function<void()> callback);
+    void OnIncomingAudio(std::function<void(std::unique_ptr<AudioStreamPacket> packet)> callback) {
+        on_incoming_audio_ = callback;
+    }
+    void OnIncomingJson(std::function<void(const cJSON* root)> callback) {
+        on_incoming_json_ = callback;
+    }
+    void OnAudioChannelOpened(std::function<void()> callback) {
+        on_audio_channel_opened_ = callback;
+    }
+    void OnAudioChannelClosed(std::function<void()> callback) {
+        on_audio_channel_closed_ = callback;
+    }
+    void OnNetworkError(std::function<void(const std::string& message)> callback) {
+        on_network_error_ = callback;
+    }
+    void OnConnected(std::function<void()> callback) {
+        on_connected_ = callback;
+    }
+    void OnDisconnected(std::function<void()> callback) {
+        on_disconnected_ = callback;
+    }
 
     virtual bool Start() = 0;
     virtual bool OpenAudioChannel() = 0;
     virtual void CloseAudioChannel() = 0;
     virtual bool IsAudioChannelOpened() const = 0;
     virtual bool SendAudio(std::unique_ptr<AudioStreamPacket> packet) = 0;
-    virtual void SendWakeWordDetected(const std::string& wake_word);
-    virtual void SendStartListening(ListeningMode mode);
-    virtual void SendStopListening();
-    virtual void SendAbortSpeaking(AbortReason reason);
-    virtual void SendMcpMessage(const std::string& message);
+    virtual void SendWakeWordDetected(const std::string& wake_word) = 0;
+    virtual void SendStartListening(ListeningMode mode) = 0;
+    virtual void SendStopListening() = 0;
+    virtual void SendAbortSpeaking(AbortReason reason) = 0;
 
 protected:
     std::function<void(const cJSON* root)> on_incoming_json_;
@@ -85,14 +80,12 @@ protected:
 
     int server_sample_rate_ = 24000;
     int server_frame_duration_ = 60;
-    bool error_occurred_ = false;
-    std::string session_id_;
-    std::chrono::time_point<std::chrono::steady_clock> last_incoming_time_;
 
-    virtual bool SendText(const std::string& text) = 0;
-    virtual void SetError(const std::string& message);
-    virtual bool IsTimeout() const;
+    void SetError(const std::string& message) {
+        if (on_network_error_ != nullptr) {
+            on_network_error_(message);
+        }
+    }
 };
 
 #endif // PROTOCOL_H
-

@@ -72,8 +72,6 @@ public:
     void WakeWordInvoke(const std::string& wake_word);
     bool UpgradeFirmware(Ota& ota, const std::string& url = "");
     bool CanEnterSleepMode();
-    void SendMcpMessage(const std::string& payload);
-    void SetSceneContextPayload(const std::string& payload);
     void SetAecMode(AecMode mode);
     AecMode GetAecMode() const { return aec_mode_; }
     void PlaySound(const std::string_view& sound);
@@ -98,15 +96,12 @@ private:
     std::string last_error_message_;
     AudioService audio_service_;
 
-    bool has_server_time_ = false;
     bool aborted_ = false;
     bool suppress_server_messages_ = false;
     int clock_ticks_ = 0;
     TaskHandle_t check_new_version_task_handle_ = nullptr;
     TaskHandle_t main_event_loop_task_handle_ = nullptr;
     bool audio_service_suspended_for_feature_ = false;
-    std::string scene_context_payload_;
-    bool scene_context_payload_sent_ = false;
     mutable std::mutex ai_alarm_mutex_;
     bool ai_alarm_active_ = false;
     bool ai_alarm_ringing_ = false;

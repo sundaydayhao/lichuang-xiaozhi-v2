@@ -17,7 +17,6 @@
 #include <cstring>
 #include <memory>
 #include <new>
-#include <sstream>
 #include <string>
 #include <thread>
 
@@ -66,34 +65,6 @@ std::string TrimCopy(const std::string& text) {
     }
 
     return text.substr(start, end - start);
-}
-
-std::string EscapeJsonString(const std::string& input) {
-    std::string escaped;
-    escaped.reserve(input.size() + 16);
-    for (char ch : input) {
-        switch (ch) {
-        case '\\':
-            escaped += "\\\\";
-            break;
-        case '"':
-            escaped += "\\\"";
-            break;
-        case '\n':
-            escaped += "\\n";
-            break;
-        case '\r':
-            escaped += "\\r";
-            break;
-        case '\t':
-            escaped += "\\t";
-            break;
-        default:
-            escaped += ch;
-            break;
-        }
-    }
-    return escaped;
 }
 
 std::string BuildJsonBody(const std::string& prompt) {
@@ -364,28 +335,6 @@ const char* UiMenuAiPrint::GetMenuText() {
 
 const char* UiMenuAiPrint::GetMenuIconAssetName() {
     return "menu_ai_print.png";
-}
-
-std::string UiMenuAiPrint::BuildScenePayload(const UiLcdDisplay& display) {
-    const std::string language = UiMenuSetting::GetSelectedLanguageCode();
-    const std::string instructions =
-        "You are an AI photo print assistant for children. "
-        "Always reply in the current reply_language. "
-        "First help the user choose a style such as 动漫, 卡通, 手绘, or 黑白线稿. "
-        "When the user wants to use the camera, call self.camera.take_photo. "
-        "After seeing the photo, describe how it would look in the chosen style. "
-        "If real printing hardware is unavailable, clearly say that only style "
-        "planning and preview advice are available.";
-
-    std::ostringstream oss;
-    oss << "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{"
-        << "\"scene\":\"ai_print\","
-        << "\"language\":\"" << language << "\","
-        << "\"reply_language\":\"" << language << "\","
-        << "\"input_language\":\"" << language << "\","
-        << "\"mode\":\"photo_print_assistant\","
-        << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
-    return oss.str();
 }
 
 bool UiLcdDisplay::HandleFeatureSpeechRecognized(const std::string& text) {

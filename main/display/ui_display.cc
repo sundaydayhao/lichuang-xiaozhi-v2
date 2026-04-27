@@ -24,7 +24,6 @@
 #include <dirent.h>
 #include <functional>
 #include <memory>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
@@ -76,34 +75,6 @@ struct VisionTaskContext {
 lv_dir_t GetGestureDirection() {
     lv_indev_t* indev = lv_indev_active();
     return indev ? lv_indev_get_gesture_dir(indev) : LV_DIR_NONE;
-}
-
-std::string EscapeJsonString(const std::string& input) {
-    std::string escaped;
-    escaped.reserve(input.size() + 16);
-    for (char ch : input) {
-        switch (ch) {
-        case '\\':
-            escaped += "\\\\";
-            break;
-        case '"':
-            escaped += "\\\"";
-            break;
-        case '\n':
-            escaped += "\\n";
-            break;
-        case '\r':
-            escaped += "\\r";
-            break;
-        case '\t':
-            escaped += "\\t";
-            break;
-        default:
-            escaped += ch;
-            break;
-        }
-    }
-    return escaped;
 }
 
 lv_obj_t* TakeValidObject(lv_obj_t*& object) {
@@ -371,105 +342,6 @@ bool UiLcdDisplay::IsDialogueSceneOption(int option_id) const {
 
 bool UiLcdDisplay::IsVisionFeatureActive() const {
     return current_feature_option_id_ == kVisionOptionId;
-}
-
-std::string UiLcdDisplay::BuildVisionScenePayload() const {
-    const std::string language = UiMenuSetting::GetSelectedLanguageCode();
-    const std::string instructions =
-        "You are a camera vision assistant for children. "
-        "Always reply in the current reply_language. "
-        "When the user asks what the current camera preview is showing, what this is, what object is in front of the camera, "
-        "or says 拍摄到的东西是什么、这是什么、帮我识别一下, call self.camera.take_photo. "
-        "Use a short question that matches the user's request, then reply briefly and clearly. "
-        "Keep answers child-safe and concise.";
-
-    std::ostringstream oss;
-    oss << "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{"
-        << "\"scene\":\"vision\","
-        << "\"language\":\"" << language << "\","
-        << "\"reply_language\":\"" << language << "\","
-        << "\"input_language\":\"" << language << "\","
-        << "\"mode\":\"camera_preview_explain\","
-        << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
-    return oss.str();
-}
-
-std::string UiLcdDisplay::BuildDialogueScenePayload(int option_id) const {
-    const char* scene = nullptr;
-    const char* mode = nullptr;
-    std::string instructions;
-    std::string language = UiMenuSetting::GetSelectedLanguageCode();
-
-    switch (option_id) {
-    case kAiAlarmOptionId:
-        return UiMenuAiAlarm::BuildScenePayload(*this);
-    case kEncyclopediaOptionId:
-        scene = "encyclopedia";
-        mode = "knowledge_guide";
-        instructions =
-            "You are a friendly encyclopedia guide for children. "
-            "Always reply in the current reply_language. "
-            "Answer general knowledge questions clearly, safely, and in a child-friendly way. "
-            "Keep answers concise first, then expand only if the user asks.";
-        break;
-    case kOralPracticeOptionId:
-        scene = "translator";
-        mode = "translation_assistant";
-        instructions =
-            "You are a friendly translation assistant for children. "
-            "Always reply in the current reply_language unless the user clearly asks for a different target language. "
-            "Help translate words, phrases, and short conversations between Chinese, English, and other requested languages. "
-            "Provide the translation first, then add a brief pronunciation or usage tip only when it is helpful. "
-            "If the source language or target language is unclear, ask one short clarifying question.";
-        break;
-    case kAiMassageOptionId:
-        scene = "ai_massage";
-        mode = "massage_assistant";
-        instructions =
-            "You are a gentle AI massage and relaxation assistant. "
-            "Always reply in the current reply_language. "
-            "Offer simple, safe, non-medical massage and relaxation guidance. "
-            "Keep the tone calm and supportive, with short step-by-step suggestions. "
-            "Focus on light pressure, stretching, and comfort reminders. "
-            "Do not claim diagnosis or treatment, and tell the user to stop if anything hurts.";
-        break;
-    case kUiMenuAiPrintOptionId:
-        return UiMenuAiPrint::BuildScenePayload(*this);
-    case kFaceReadingOptionId:
-        scene = "fortune";
-        mode = "entertainment_face_reading";
-        instructions =
-            "You are an entertainment-only face reading assistant. "
-            "Always reply in the current reply_language. "
-            "If the user asks about face, palm, tongue, or appearance-based fun analysis, "
-            "call self.camera.take_photo. "
-            "Be playful and light. Clearly state that the result is for entertainment only "
-            "and is not medical, legal, or factual fortune advice.";
-        break;
-    case kMagicMirrorOptionId:
-        scene = "makeup";
-        mode = "beauty_mirror";
-        instructions =
-            "You are a friendly makeup and grooming assistant. "
-            "Always reply in the current reply_language. "
-            "When the user wants appearance feedback, call self.camera.take_photo. "
-            "Start with kind compliments, then give practical makeup, skincare, or styling "
-            "suggestions suitable for the person in view. "
-            "Keep the tone positive and child-safe.";
-        break;
-    default:
-        return "";
-    }
-
-    std::ostringstream oss;
-    oss << "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{"
-        << "\"scene\":\"" << scene << "\","
-        << "\"language\":\"" << language << "\","
-        << "\"reply_language\":\"" << language << "\","
-        << "\"input_language\":\"" << language << "\","
-        << "\"mode\":\"" << mode << "\","
-        << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
-    return oss.str();
 }
 
 const lv_image_dsc_t* UiLcdDisplay::LoadAssetImage(const char* asset_name) {
@@ -960,7 +832,6 @@ void UiLcdDisplay::ExitDialogueScene(bool exit_chat_session) {
         return;
     }
 
-    Application::GetInstance().SetSceneContextPayload("");
     if (exit_chat_session) {
         Application::GetInstance().ExitChatSession();
     }
@@ -982,9 +853,6 @@ void UiLcdDisplay::EnterDialogueScene(int option_id) {
     } else {
         ApplyFeatureVisual(option_id);
     }
-
-    const std::string payload = BuildDialogueScenePayload(option_id);
-    Application::GetInstance().SetSceneContextPayload(payload);
 
     if (option_id == kEncyclopediaOptionId) {
         dialogue_scene_deadline_us_ =
@@ -1364,12 +1232,6 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
         ExitDialogueScene(true);
     }
 
-    if (option_id == kVisionOptionId) {
-        Application::GetInstance().SetSceneContextPayload(BuildVisionScenePayload());
-    } else {
-        Application::GetInstance().SetSceneContextPayload("");
-    }
-
     if (option_id == kUiMenuRemoteSelfieOptionId) {
         UiMenuRemoteSelfie::ShowScreen(*this);
         return;
@@ -1443,7 +1305,6 @@ void UiLcdDisplay::OnMenuOptionClicked(int option_id) {
 
 void UiLcdDisplay::ReturnToMainMenu() {
     ExitDialogueScene(true);
-    Application::GetInstance().SetSceneContextPayload("");
     SetPreviewPresentationMode(PreviewPresentationMode::kChatBubble);
     if (UiMenuRemoteSelfie::IsScreenActive(*this)) {
         UiMenuRemoteSelfie::Deactivate(*this);
@@ -1465,7 +1326,6 @@ void UiLcdDisplay::ReturnToMainMenu() {
 
 void UiLcdDisplay::ReturnToCameraScreen() {
     gallery_swipe_enabled_ = true;
-    Application::GetInstance().SetSceneContextPayload(BuildVisionScenePayload());
     SetPreviewPresentationMode(PreviewPresentationMode::kOverlay);
     UiMenuAiAlarm::HidePanel(*this);
     ApplyFeatureVisual(kVisionOptionId);
@@ -1489,7 +1349,6 @@ void UiLcdDisplay::ShowGallery() {
     current_photo_image_.reset();
     current_photo_img_ = nullptr;
     StopCameraPreview();
-    Application::GetInstance().SetSceneContextPayload("");
 
     if (gallery_screen_ == nullptr) {
         InitializeGallery();

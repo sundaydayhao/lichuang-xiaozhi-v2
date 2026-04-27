@@ -9,9 +9,7 @@
 #include "esp32_camera.h"
 #include "settings.h"
 
-#if defined(TOUCH_CONTROLLER_AXS5106)
-#include <esp_lcd_touch_axs5106.h>
-#elif defined(TOUCH_CONTROLLER_CST816D)
+#if defined(TOUCH_CONTROLLER_CST816D)
 #include <esp_lcd_touch_cst816s.h>
 #elif defined(TOUCH_CONTROLLER_FT5X06)
 #include <esp_lcd_touch_ft5x06.h>
@@ -33,42 +31,7 @@
 #include "lamp_G.h"
 #include "s620.h"
 
-#include "esp_lcd_gc9a01.h"
 #include <esp_spiffs.h>
-
-static const gc9a01_lcd_init_cmd_t gc9107_lcd_init_cmds[] = {
-    {0xfe, (uint8_t[]){0x00}, 0, 0},
-    {0xef, (uint8_t[]){0x00}, 0, 0},
-    {0x36, (uint8_t[]){0x48}, 1, 0},
-    {0x3a, (uint8_t[]){0x05}, 1, 0},
-    {0x86, (uint8_t[]){0x98}, 1, 0},
-    {0x89, (uint8_t[]){0x13}, 1, 0},
-    {0x8b, (uint8_t[]){0x80}, 1, 0},
-    {0x8d, (uint8_t[]){0x33}, 1, 0},
-    {0x8e, (uint8_t[]){0x0f}, 1, 0},
-    {0xe8, (uint8_t[]){0x12, 0x00}, 2, 0},
-    {0xec, (uint8_t[]){0x33, 0x06, 0x22}, 3, 0},
-    {0xff, (uint8_t[]){0x62}, 1, 0},
-    {0x99, (uint8_t[]){0x3e}, 1, 0},
-    {0x9d, (uint8_t[]){0x4b}, 1, 0},
-    {0x98, (uint8_t[]){0x3e}, 1, 0},
-    {0x9c, (uint8_t[]){0x4b}, 1, 0},
-    {0xc3, (uint8_t[]){0x20}, 1, 0},
-    {0xc4, (uint8_t[]){0x30}, 1, 0},
-    {0xc9, (uint8_t[]){0x2A}, 1, 0},
-    {0x2a, (uint8_t[]){0x00, 0x22, 0x00, 0xcd}, 4, 0},
-    {0x2b, (uint8_t[]){0x00, 0x00, 0x01, 0x3f}, 4, 0},
-    {0x2c, (uint8_t[]){0x00}, 0, 0},
-    {0xF0, (uint8_t[]){0x04, 0x07, 0x07, 0x07, 0x05, 0x26}, 6, 0},
-    {0xF1, (uint8_t[]){0x3B, 0x71, 0x74, 0x26, 0x28, 0x69}, 6, 0},
-    {0xF2, (uint8_t[]){0x04, 0x07, 0x07, 0x07, 0x05, 0x26}, 6, 0},
-    {0xF3, (uint8_t[]){0x3B, 0x71, 0x74, 0x26, 0x28, 0x6C}, 6, 0},
-    {0x35, (uint8_t[]){0x00}, 1, 0},
-    {0x44, (uint8_t[]){0x00, 0x0a}, 2, 0},
-    {0x11, (uint8_t[]){0x00}, 0, 120},
-    {0x29, (uint8_t[]){0x00}, 0, 0},
-    {0x2c, (uint8_t[]){0x00}, 0, 0},
-};
 
 #ifdef TAG
 #undef TAG
@@ -154,18 +117,7 @@ private:
         panel_config.data_endian = DISPLAY_DATA_ENDIAN;
         panel_config.bits_per_pixel = 16;
 
-#if defined(LCD_TYPE_ILI9341_SERIAL)
-        ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(panel_io, &panel_config, &panel));
-#elif defined(LCD_TYPE_GC9A01_SERIAL)
-        gc9a01_vendor_config_t gc9107_vendor_config = {
-            .init_cmds = gc9107_lcd_init_cmds,
-            .init_cmds_size = sizeof(gc9107_lcd_init_cmds) / sizeof(gc9a01_lcd_init_cmd_t),
-        };
-        panel_config.vendor_config = &gc9107_vendor_config;
-        ESP_ERROR_CHECK(esp_lcd_new_panel_gc9a01(panel_io, &panel_config, &panel));
-#else
         ESP_ERROR_CHECK(bsp_lcd_new_panel_st7789(panel_io, &panel_config, &panel));
-#endif
 
         esp_lcd_panel_reset(panel);
         esp_lcd_panel_init(panel);
@@ -182,15 +134,6 @@ private:
         esp_lcd_touch_handle_t tp = nullptr;
         esp_err_t ret = ESP_OK;
 
-#if defined(TOUCH_CONTROLLER_AXS5106)
-        i2c_master_dev_handle_t touch_dev_handle = nullptr;
-        i2c_device_config_t touch_dev_cfg = {
-            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-            .device_address = TOUCH_I2C_ADDRESS,
-            .scl_speed_hz = TOUCH_I2C_SPEED_HZ,
-        };
-        ESP_ERROR_CHECK(i2c_master_bus_add_device(i2c_bus_, &touch_dev_cfg, &touch_dev_handle));
-#elif defined(TOUCH_CONTROLLER_CST816D) || defined(TOUCH_CONTROLLER_FT5X06)
         esp_lcd_panel_io_handle_t tp_io_handle = nullptr;
         esp_lcd_panel_io_i2c_config_t tp_io_config = {
             .dev_addr = TOUCH_I2C_ADDRESS,
@@ -207,7 +150,6 @@ private:
             .scl_speed_hz = TOUCH_I2C_SPEED_HZ,
         };
         ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c_bus_, &tp_io_config, &tp_io_handle));
-#endif
 
         esp_lcd_touch_config_t tp_cfg = {
             .x_max = DISPLAY_SWAP_XY ? DISPLAY_HEIGHT : DISPLAY_WIDTH,
@@ -225,9 +167,7 @@ private:
             },
         };
 
-#if defined(TOUCH_CONTROLLER_AXS5106)
-        ret = esp_lcd_touch_new_i2c_axs5106(touch_dev_handle, &tp_cfg, &tp);
-#elif defined(TOUCH_CONTROLLER_CST816D)
+#if defined(TOUCH_CONTROLLER_CST816D)
         ret = esp_lcd_touch_new_i2c_cst816s(tp_io_handle, &tp_cfg, &tp);
 #elif defined(TOUCH_CONTROLLER_FT5X06)
         ret = esp_lcd_touch_new_i2c_ft5x06(tp_io_handle, &tp_cfg, &tp);

@@ -622,16 +622,6 @@ void EspXiaozhiProtocol::SendAbortSpeaking(AbortReason reason) {
     }
 }
 
-void EspXiaozhiProtocol::SendMcpMessage(const std::string& message) {
-    (void)message;
-    ESP_LOGD(TAG, "Raw MCP send is handled by esp_xiaozhi MCP engine");
-}
-
-bool EspXiaozhiProtocol::SendText(const std::string& text) {
-    (void)text;
-    return false;
-}
-
 void EspXiaozhiProtocol::HandleAudio(const uint8_t* data, int len) {
     if (data == nullptr || len <= 0 || on_incoming_audio_ == nullptr) {
         return;
@@ -642,7 +632,6 @@ void EspXiaozhiProtocol::HandleAudio(const uint8_t* data, int len) {
     packet->frame_duration = audio_.frame_duration;
     packet->timestamp = 0;
     packet->payload.assign(data, data + len);
-    last_incoming_time_ = std::chrono::steady_clock::now();
     on_incoming_audio_(std::move(packet));
 }
 

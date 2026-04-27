@@ -20,7 +20,6 @@ public:
     void SendStartListening(ListeningMode mode) override;
     void SendStopListening() override;
     void SendAbortSpeaking(AbortReason reason) override;
-    void SendMcpMessage(const std::string& message) override;
 
 private:
     esp_xiaozhi_chat_handle_t chat_ = 0;
@@ -33,7 +32,6 @@ private:
     bool audio_channel_opened_ = false;
     bool event_registered_ = false;
 
-    bool SendText(const std::string& text) override;
     void HandleAudio(const uint8_t* data, int len);
     void HandleChatEvent(esp_xiaozhi_chat_event_t event, void* event_data);
     void HandleSystemEvent(int32_t event_id, void* event_data);

@@ -12,7 +12,6 @@
 #include <cmath>
 #include <cstdio>
 #include <ctime>
-#include <sstream>
 #include <string>
 
 namespace {
@@ -29,34 +28,6 @@ lv_obj_t* TakeValidObject(lv_obj_t*& object) {
 
     object = nullptr;
     return nullptr;
-}
-
-std::string EscapeJsonString(const std::string& input) {
-    std::string escaped;
-    escaped.reserve(input.size() + 16);
-    for (char ch : input) {
-        switch (ch) {
-        case '\\':
-            escaped += "\\\\";
-            break;
-        case '"':
-            escaped += "\\\"";
-            break;
-        case '\n':
-            escaped += "\\n";
-            break;
-        case '\r':
-            escaped += "\\r";
-            break;
-        case '\t':
-            escaped += "\\t";
-            break;
-        default:
-            escaped += ch;
-            break;
-        }
-    }
-    return escaped;
 }
 
 std::string FormatCurrentTimeForDisplay(bool has_valid_time, time_t now) {
@@ -598,31 +569,4 @@ bool UiMenuAiAlarm::IsPanelVisible(UiLcdDisplay& display) {
     }
 
     return state.panel != nullptr && !lv_obj_has_flag(state.panel, LV_OBJ_FLAG_HIDDEN);
-}
-
-std::string UiMenuAiAlarm::BuildScenePayload(const UiLcdDisplay& display) {
-    const std::string language = UiMenuSetting::GetSelectedLanguageCode();
-    const std::string instructions =
-        "You are an AI alarm assistant. "
-        "Always reply in the current reply_language. "
-        "When the user asks for a relative timer or reminder such as "
-        "'15分钟后提醒我上课', call self.ai_alarm.set_timer. "
-        "Convert the duration into delay_seconds. "
-        "Put the short reminder content into reminder. "
-        "When the user asks to cancel, stop, or clear the timer, call "
-        "self.ai_alarm.cancel_timer. "
-        "When the user asks whether a timer is active, call "
-        "self.ai_alarm.get_status. "
-        "Do not claim a timer is set unless the tool call succeeds. "
-        "After a tool call, reply briefly and clearly.";
-
-    std::ostringstream oss;
-    oss << "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/scene_changed\",\"params\":{"
-        << "\"scene\":\"ai_alarm\","
-        << "\"language\":\"" << language << "\","
-        << "\"reply_language\":\"" << language << "\","
-        << "\"input_language\":\"" << language << "\","
-        << "\"mode\":\"countdown_alarm\","
-        << "\"instructions\":\"" << EscapeJsonString(instructions) << "\"}}";
-    return oss.str();
 }

@@ -473,7 +473,7 @@ void Application::Start() {
     // Check for new assets version
     CheckAssetsVersion();
 
-    // Check for new firmware version or get the MQTT broker address
+    // Check for firmware updates and activation.
     Ota ota;
     CheckNewVersion(ota);
 
@@ -503,7 +503,6 @@ void Application::Start() {
     });
     protocol_->OnAudioChannelOpened([this, codec, &board]() {
         board.SetPowerSaveMode(false);
-        scene_context_payload_sent_ = false;
         if (protocol_->server_sample_rate() != codec->output_sample_rate()) {
             ESP_LOGW(TAG, "Server sample rate %d does not match device output sample rate %d, resampling may cause distortion",
                 protocol_->server_sample_rate(), codec->output_sample_rate());
@@ -511,7 +510,6 @@ void Application::Start() {
     });
     protocol_->OnAudioChannelClosed([this, &board]() {
         board.SetPowerSaveMode(true);
-        scene_context_payload_sent_ = false;
         Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
             auto* ui_display = dynamic_cast<UiLcdDisplay*>(display);
@@ -721,7 +719,6 @@ void Application::Start() {
     SystemInfo::PrintHeapStats();
     SetDeviceState(kDeviceStateIdle);
 
-    has_server_time_ = ota.HasServerTime();
     if (protocol_started) {
         std::string message = std::string(Lang::Strings::VERSION) + ota.GetCurrentVersion();
         display->ShowNotification(message.c_str());
@@ -740,9 +737,8 @@ void Application::Schedule(std::function<void()> callback) {
     xEventGroupSetBits(event_group_, MAIN_EVENT_SCHEDULE);
 }
 
-// The Main Event Loop controls the chat state and websocket connection
-// If other tasks need to access the websocket or chat state,
-// they should use Schedule to call this function
+// The main event loop controls chat state and protocol I/O.
+// Other tasks should use Schedule to touch chat state from this task.
 void Application::MainEventLoop() {
     while (true) {
         auto bits = xEventGroupWaitBits(event_group_, MAIN_EVENT_SCHEDULE |
@@ -873,10 +869,6 @@ void Application::ApplyAudioBehaviorForState(DeviceState state) {
     case kDeviceStateListening:
         if (!audio_service_.IsAudioProcessorRunning()) {
             if (protocol_) {
-                if (!scene_context_payload_.empty() && !scene_context_payload_sent_) {
-                    protocol_->SendMcpMessage(scene_context_payload_);
-                    scene_context_payload_sent_ = true;
-                }
                 protocol_->SendStartListening(listening_mode_);
             }
             audio_service_.EnableVoiceProcessing(true);
@@ -1075,21 +1067,6 @@ bool Application::CanEnterSleepMode() {
     return true;
 }
 
-void Application::SendMcpMessage(const std::string& payload) {
-    if (protocol_ == nullptr) {
-        return;
-    }
-
-    // Make sure you are using main thread to send MCP message
-    if (xTaskGetCurrentTaskHandle() == main_event_loop_task_handle_) {
-        protocol_->SendMcpMessage(payload);
-    } else {
-        Schedule([this, payload = std::move(payload)]() {
-            protocol_->SendMcpMessage(payload);
-        });
-    }
-}
-
 std::string Application::SetAiAlarmTimer(int delay_seconds, const std::string& reminder) {
     if (delay_seconds <= 0) {
         throw std::runtime_error("delay_seconds must be greater than 0");
@@ -1255,26 +1232,6 @@ void Application::ClearAiAlarmLocked() {
     ai_alarm_initial_seconds_ = 0;
     ai_alarm_reminder_.clear();
     ai_alarm_repeat_remaining_ = 0;
-}
-
-void Application::SetSceneContextPayload(const std::string& payload) {
-    auto apply_payload = [this, payload]() {
-        scene_context_payload_ = payload;
-        scene_context_payload_sent_ = false;
-
-        if (payload.empty() || protocol_ == nullptr || !protocol_->IsAudioChannelOpened()) {
-            return;
-        }
-
-        protocol_->SendMcpMessage(payload);
-        scene_context_payload_sent_ = true;
-    };
-
-    if (xTaskGetCurrentTaskHandle() == main_event_loop_task_handle_) {
-        apply_payload();
-    } else {
-        Schedule(std::move(apply_payload));
-    }
 }
 
 void Application::SetAecMode(AecMode mode) {

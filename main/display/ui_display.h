@@ -259,8 +259,6 @@ private:
     void RunVisionRecognitionTask(const std::string& question);
     void UpdateVisionAiBadgeVisibility();
     void RefreshMenuIconImages();
-    std::string BuildVisionScenePayload() const;
-    std::string BuildDialogueScenePayload(int option_id) const;
     const lv_image_dsc_t* LoadAssetImage(const char* asset_name);
     const char* GetMenuText(int option_id) const;
     const char* GetMenuIconAssetName(int option_id) const;
