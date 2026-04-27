@@ -1,10 +1,11 @@
-#include "mcp_server.h"
+#pragma once
+
 #include <esp_log.h>
 #include <driver/ledc.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/timers.h>
 
-#define TAG "绿灯事件："
+static constexpr const char* kGreenLampTag = "绿灯事件：";
 
 // 舵机控制参数（参考 otto_robot）
 #define SERVO_MIN_PULSEWIDTH_US 500           // 最小脉宽（微秒）
@@ -40,7 +41,7 @@ private:
         ESP_ERROR_CHECK(ledc_set_duty(ledc_speed_mode_, ledc_channel_, duty));
         ESP_ERROR_CHECK(ledc_update_duty(ledc_speed_mode_, ledc_channel_));
 
-        ESP_LOGI(TAG, "设置舵机角度: %d度", angle);
+        ESP_LOGI(kGreenLampTag, "设置舵机角度: %d度", angle);
     }
 
     // 档位 -> 角度映射（>90 为单向旋转；如需反向可将数值改到 <90）
@@ -57,12 +58,12 @@ private:
     void ApplySpeed() {
         if (!power_ || speed_level_ == 0) {
             SetServoAngle(90); // 停止
-            ESP_LOGI(TAG, "停止按摩（90°）");
+            ESP_LOGI(kGreenLampTag, "停止按摩（90°）");
             return;
         }
         int angle = AngleForLevel(speed_level_);
         SetServoAngle(angle);
-        ESP_LOGI(TAG, "开始/调整按摩：%d 档（角度=%d）", speed_level_, angle);
+        ESP_LOGI(kGreenLampTag, "开始/调整按摩：%d 档（角度=%d）", speed_level_, angle);
     }
 
     // 初始化LEDC PWM
@@ -92,7 +93,7 @@ private:
 
         is_attached_ = true;
         SetServoAngle(90); // 停止位
-        ESP_LOGI(TAG, "舵机初始化完成，GPIO=%d", gpio_num_);
+        ESP_LOGI(kGreenLampTag, "舵机初始化完成，GPIO=%d", gpio_num_);
     }
 
     // 计时到点后的回调：自动停止
@@ -102,7 +103,7 @@ private:
         self->power_ = false;
         self->speed_level_ = 0;
         self->ApplySpeed();
-        ESP_LOGI(TAG, "按摩计时结束，已自动停止");
+        ESP_LOGI(kGreenLampTag, "按摩计时结束，已自动停止");
     }
 
     void StartMassageTimer(int minutes) {
@@ -114,14 +115,14 @@ private:
             xTimerStop(massage_timer_, 0);
             xTimerChangePeriod(massage_timer_, pdMS_TO_TICKS(minutes * 60000), 0);
             xTimerStart(massage_timer_, 0);
-            ESP_LOGI(TAG, "按摩计时启动：%d 分钟", minutes);
+            ESP_LOGI(kGreenLampTag, "按摩计时启动：%d 分钟", minutes);
         }
     }
 
     void StopMassageTimer() {
         if (massage_timer_) {
             xTimerStop(massage_timer_, 0);
-            ESP_LOGI(TAG, "按摩计时取消");
+            ESP_LOGI(kGreenLampTag, "按摩计时取消");
         }
     }
 
@@ -129,62 +130,6 @@ public:
     explicit Green_Lamp(gpio_num_t gpio_num) : gpio_num_(gpio_num) {
         instance_ = this;
         InitializeServo();
-
-        auto& server = McpServer::GetInstance();
-
-        server.AddTool("绿灯.获取开关状态", "返回舵机的开/关状态",
-                       PropertyList(), [this](const PropertyList&) {
-                           ESP_LOGW(TAG, "获取到了舵机的当前状态，当前状态为%s", power_ ? "开" : "关");
-                           return power_ ? "{\"舵机状态\": \"按摩中\"}" : "{\"舵机状态\": \"已停止\"}";
-                       });
-
-        // 开始按摩：进入最低档并持续
-        server.AddTool("开始按摩", "开始按摩",
-                       PropertyList(), [this](const PropertyList&) {
-                           power_ = true;
-                           if (speed_level_ < 1) speed_level_ = 1; // 最低档
-                           ApplySpeed();
-                           StartMassageTimer(massage_duration_minutes_);
-                           return true; // 立即返回，避免阻塞
-                       });
-
-        // 加一档：最多三档
-        server.AddTool("快点", "大力一点",
-                       PropertyList(), [this](const PropertyList&) {
-                           if (!power_) {
-                               power_ = true;
-                               speed_level_ = 1;
-                           } else if (speed_level_ < 3) {
-                               speed_level_++;
-                           }
-                           ApplySpeed();
-                           return true; // 立即返回
-                       });
-
-        // 减一档：最少一档（不停止）
-        server.AddTool("慢点", "轻一点",
-                       PropertyList(), [this](const PropertyList&) {
-                           if (power_) {
-                               if (speed_level_ > 1) speed_level_--;
-                               // 若当前低于1，矫正到1，保持“慢速”而不是停止
-                               if (speed_level_ < 1) speed_level_ = 1;
-                           } else {
-                               // 未开启则保持停止
-                               speed_level_ = 0;
-                           }
-                           ApplySpeed();
-                           return true; // 立即返回
-                       });
-
-        // 结束按摩：停止
-        server.AddTool("结束按摩", "结束按摩",
-                       PropertyList(), [this](const PropertyList&) {
-                           power_ = false;
-                           speed_level_ = 0;
-                           ApplySpeed();
-                           StopMassageTimer();
-                           return true; // 立即返回
-                       });
     }
 
     ~Green_Lamp() {
@@ -238,7 +183,7 @@ public:
     static void SetMassageDurationMinutes(int minutes) {
         if (instance_ && minutes > 0) {
             instance_->massage_duration_minutes_ = minutes;
-            ESP_LOGI(TAG, "设定按摩默认时长：%d 分钟", minutes);
+            ESP_LOGI(kGreenLampTag, "设定按摩默认时长：%d 分钟", minutes);
         }
     }
 
@@ -250,5 +195,13 @@ public:
             instance_->ApplySpeed();
             instance_->StartMassageTimer(minutes);
         }
+    }
+
+    static bool IsMassageRunning() {
+        return instance_ != nullptr && instance_->power_;
+    }
+
+    static bool IsAvailable() {
+        return instance_ != nullptr;
     }
 };

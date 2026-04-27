@@ -1,5 +1,4 @@
 #include "esp32_camera.h"
-#include "mcp_server.h"
 #include "display.h"
 #include "board.h"
 #include "system_info.h"

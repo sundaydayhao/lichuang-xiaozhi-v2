@@ -471,6 +471,38 @@ dependencies:
     - esp32c5
     - esp32c6
     version: 0.6.1
+  espressif/esp_websocket_client:
+    component_hash: c5a067a9fddea370c478017e66fac302f4b79c3d4027e9bdd42a019786cceb92
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.6.1
+  espressif/esp_xiaozhi:
+    component_hash: f800bea388ed47e0ce08faec2c73370d7d61ebf4c2beb481e9a538467d2d9959
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: 0.*
+    - name: espressif/esp_websocket_client
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.6.1
+    - name: espressif/mcp-c-sdk
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.0.0
+    - name: idf
+      require: private
+      version: '>=5.5,<6'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.1.0
   espressif/freetype:
     component_hash: a4169cdd22b3572342b2d640d7082405b8895e3214539283601c03412589b65d
     dependencies:
@@ -505,6 +537,20 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 3.0.3
+  espressif/mcp-c-sdk:
+    component_hash: 8814a390e798712d6841569827e836850188f44edd00a4dfc0bbda178376a33c
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: 0.*
+    - name: idf
+      require: private
+      version: '>=5.4'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.0.0
   espressif2022/esp_emote_gfx:
     component_hash: 7478561e4e8bd0efd4307647ec7221da2519de4ff1cd0cb08dccfbd0161cadaa
     dependencies:
@@ -640,6 +686,7 @@ direct_dependencies:
 - espressif/esp_lcd_touch_gt911
 - espressif/esp_lvgl_port
 - espressif/esp_mmap_assets
+- espressif/esp_xiaozhi
 - espressif/knob
 - espressif/led_strip
 - espressif2022/esp_emote_gfx
@@ -651,6 +698,6 @@ direct_dependencies:
 - waveshare/esp_lcd_sh8601
 - waveshare/esp_lcd_touch_cst9217
 - wvirgil123/sscma_client
-manifest_hash: 953ba7eaad6a69b721aa4e5dca0dc20af609d5e3f2866dfe9280c9940dc4621a
+manifest_hash: e63401bb67d2c758a4ab3fb78c34de4cc73abd9a9bd41910b505fd3d1de9e5b2
 target: esp32s3
 version: 2.0.0

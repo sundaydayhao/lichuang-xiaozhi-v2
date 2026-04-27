@@ -3,10 +3,8 @@
 #include "display.h"
 #include "system_info.h"
 #include "audio_codec.h"
-#include "mqtt_protocol.h"
-#include "websocket_protocol.h"
+#include "esp_xiaozhi_protocol.h"
 #include "assets/lang_config.h"
-#include "mcp_server.h"
 #include "assets.h"
 #include "boards/bread-compact-ml307camtou/lamp_G.h"
 #include "display/ui_display.h"
@@ -482,19 +480,7 @@ void Application::Start() {
     // Initialize the protocol
     display->SetStatus(Lang::Strings::LOADING_PROTOCOL);
 
-    // Add MCP common tools before initializing the protocol
-    auto& mcp_server = McpServer::GetInstance();
-    mcp_server.AddCommonTools();
-    mcp_server.AddUserOnlyTools();
-
-    if (ota.HasMqttConfig()) {
-        protocol_ = std::make_unique<MqttProtocol>();
-    } else if (ota.HasWebsocketConfig()) {
-        protocol_ = std::make_unique<WebsocketProtocol>();
-    } else {
-        ESP_LOGW(TAG, "No protocol specified in the OTA config, using MQTT");
-        protocol_ = std::make_unique<MqttProtocol>();
-    }
+    protocol_ = std::make_unique<EspXiaozhiProtocol>();
 
     protocol_->OnConnected([this]() {
         DismissAlert();
@@ -691,11 +677,6 @@ void Application::Start() {
                 Schedule([this, display, emotion_str = std::string(emotion->valuestring)]() {
                     display->SetEmotion(emotion_str.c_str());
                 });
-            }
-        } else if (strcmp(type->valuestring, "mcp") == 0) {
-            auto payload = cJSON_GetObjectItem(root, "payload");
-            if (cJSON_IsObject(payload)) {
-                McpServer::GetInstance().ParseMessage(payload);
             }
         } else if (strcmp(type->valuestring, "system") == 0) {
             auto command = cJSON_GetObjectItem(root, "command");
