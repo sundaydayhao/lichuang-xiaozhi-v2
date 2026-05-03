@@ -8,11 +8,9 @@
 #include "esp32_camera.h"
 #include "lvgl_theme.h"
 #include "ui_display.h"
-#include "boards/lichuang-s3/lamp_G.h"
 
 #include <cstring>
 #include <exception>
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -182,64 +180,6 @@ esp_mcp_value_t RemoteSelfieStopRecordingCallback(const esp_mcp_property_list_t*
     return ExecuteRemoteSelfieAction(UiMenuRemoteSelfieAction::kCapture, "remote_selfie_stop_recording_sent");
 }
 
-esp_mcp_value_t GetMassageStatusCallback(const esp_mcp_property_list_t*) {
-    cJSON* json = cJSON_CreateObject();
-    if (json == nullptr) {
-        return esp_mcp_value_create_bool(false);
-    }
-
-    cJSON_AddBoolToObject(json, "available", Green_Lamp::IsAvailable());
-    cJSON_AddBoolToObject(json, "running", Green_Lamp::IsMassageRunning());
-    cJSON_AddStringToObject(json, "status", Green_Lamp::IsMassageRunning() ? "按摩中" : "已停止");
-
-    std::string result = JsonToString(json);
-    cJSON_Delete(json);
-    return esp_mcp_value_create_string(result.c_str());
-}
-
-bool ScheduleMassageAction(std::function<void()> action) {
-    if (!Green_Lamp::IsAvailable()) {
-        return false;
-    }
-    Application::GetInstance().Schedule(std::move(action));
-    return true;
-}
-
-esp_mcp_value_t StartMassageCallback(const esp_mcp_property_list_t*) {
-    return esp_mcp_value_create_bool(ScheduleMassageAction([]() {
-        Green_Lamp::StartMassage();
-    }));
-}
-
-esp_mcp_value_t StopMassageCallback(const esp_mcp_property_list_t*) {
-    return esp_mcp_value_create_bool(ScheduleMassageAction([]() {
-        Green_Lamp::StopMassage();
-    }));
-}
-
-esp_mcp_value_t FasterMassageCallback(const esp_mcp_property_list_t*) {
-    return esp_mcp_value_create_bool(ScheduleMassageAction([]() {
-        Green_Lamp::IncreaseLevel();
-    }));
-}
-
-esp_mcp_value_t SlowerMassageCallback(const esp_mcp_property_list_t*) {
-    return esp_mcp_value_create_bool(ScheduleMassageAction([]() {
-        Green_Lamp::DecreaseLevel();
-    }));
-}
-
-esp_mcp_value_t StartMassageForMinutesCallback(const esp_mcp_property_list_t* properties) {
-    int minutes = esp_mcp_property_list_get_property_int(properties, "minutes");
-    if (minutes <= 0 || minutes > 60) {
-        return esp_mcp_value_create_bool(false);
-    }
-
-    return esp_mcp_value_create_bool(ScheduleMassageAction([minutes]() {
-        Green_Lamp::StartMassageWithMinutes(minutes);
-    }));
-}
-
 esp_mcp_value_t SetAiAlarmCallback(const esp_mcp_property_list_t* properties) {
     int delay_seconds = esp_mcp_property_list_get_property_int(properties, "delay_seconds");
     const char* reminder = esp_mcp_property_list_get_property_string(properties, "reminder");
@@ -290,7 +230,7 @@ esp_mcp_t* CreateMcpEngine() {
 
     esp_mcp_tool_t* tool = esp_mcp_tool_create(
         "self.get_device_status",
-        "Get device status including audio, screen, battery, and network information",
+        "Get device status including audio, screen, camera, and network information",
         GetDeviceStatusCallback);
     AddMcpTool(mcp, tool);
 
@@ -374,43 +314,6 @@ esp_mcp_t* CreateMcpEngine() {
         "self.remote_selfie.stop_recording",
         "Press the phone camera shutter once in remote selfie mode to stop recording",
         RemoteSelfieStopRecordingCallback);
-    AddMcpTool(mcp, tool);
-
-    tool = esp_mcp_tool_create(
-        "self.massage.get_status",
-        "Get the massage motor status",
-        GetMassageStatusCallback);
-    AddMcpTool(mcp, tool);
-
-    tool = esp_mcp_tool_create(
-        "self.massage.start",
-        "Start massage at the lowest speed",
-        StartMassageCallback);
-    AddMcpTool(mcp, tool);
-
-    tool = esp_mcp_tool_create(
-        "self.massage.stop",
-        "Stop massage",
-        StopMassageCallback);
-    AddMcpTool(mcp, tool);
-
-    tool = esp_mcp_tool_create(
-        "self.massage.faster",
-        "Increase massage speed by one level",
-        FasterMassageCallback);
-    AddMcpTool(mcp, tool);
-
-    tool = esp_mcp_tool_create(
-        "self.massage.slower",
-        "Decrease massage speed by one level",
-        SlowerMassageCallback);
-    AddMcpTool(mcp, tool);
-
-    tool = esp_mcp_tool_create(
-        "self.massage.start_for_minutes",
-        "Start massage for a specific duration in minutes",
-        StartMassageForMinutesCallback);
-    esp_mcp_tool_add_property(tool, esp_mcp_property_create_with_range("minutes", 1, 60));
     AddMcpTool(mcp, tool);
 
     tool = esp_mcp_tool_create(

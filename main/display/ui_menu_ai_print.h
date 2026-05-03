@@ -10,7 +10,7 @@
 class UiLcdDisplay;
 class LvglImage;
 
-inline constexpr int kUiMenuAiPrintOptionId = 7;
+inline constexpr int kUiMenuAiPrintOptionId = 6;
 
 struct UiMenuAiPrintState {
     lv_obj_t* message_label = nullptr;

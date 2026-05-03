@@ -6,7 +6,6 @@
 #include "esp_xiaozhi_protocol.h"
 #include "assets/lang_config.h"
 #include "assets.h"
-#include "boards/lichuang-s3/lamp_G.h"
 #include "display/ui_display.h"
 #include "display/ui_menu_ai_print.h"
 #include "settings.h"
@@ -18,7 +17,6 @@
 #include <esp_log.h>
 #include <esp_err.h>
 #include <cJSON.h>
-#include <driver/gpio.h>
 #include <arpa/inet.h>
 #include <font_awesome.h>
 #include <cctype>
@@ -585,81 +583,6 @@ void Application::Start() {
                     });
                     return;
                 }
-
-                // 本地关键词直达舵机：先动再说
-                Schedule([content]() {
-                    // 解析“按摩X分钟/分”指令（优先处理，支持阿拉伯数字与常见中文数字）
-                    size_t pos_a = content.find("按摩");
-                    size_t pos_m = content.find("分钟");
-                    if (pos_m == std::string::npos) pos_m = content.find("分");
-                    if (pos_a != std::string::npos && pos_m != std::string::npos && pos_m > pos_a) {
-                        // 取出区间 [pos_a, pos_m) 做解析
-                        std::string seg = content.substr(pos_a, pos_m - pos_a);
-
-                        auto parse_arabic = [&](const std::string& s)->int {
-                            int value = 0; int digits = 0;
-                            for (char c : s) {
-                                if (c >= '0' && c <= '9') {
-                                    value = value * 10 + (c - '0');
-                                    digits++;
-                                }
-                            }
-                            return digits > 0 ? value : 0;
-                        };
-                        auto contains = [&](const std::string& s, const char* pat)->bool {
-                            return s.find(pat) != std::string::npos;
-                        };
-                        auto digit_of = [&](const std::string& s)->int {
-                            if (contains(seg, "九")) return 9;
-                            if (contains(seg, "八")) return 8;
-                            if (contains(seg, "七")) return 7;
-                            if (contains(seg, "六")) return 6;
-                            if (contains(seg, "五")) return 5;
-                            if (contains(seg, "四")) return 4;
-                            if (contains(seg, "三")) return 3;
-                            if (contains(seg, "二") || contains(seg, "两")) return 2;
-                            if (contains(seg, "一")) return 1;
-                            if (contains(seg, "零")) return 0;
-                            return -1;
-                        };
-                        auto parse_chinese = [&](const std::string& s)->int {
-                            // 支持：一/二/.../九；十/二十/三十；十X/二十X/三十X 等常见口语
-                            // 简化处理：通过“十”的左右片段判定十位与个位
-                            size_t pos_t = s.find("十");
-                            if (pos_t != std::string::npos) {
-                                std::string left = s.substr(0, pos_t);
-                                std::string right = s.substr(pos_t + std::string("十").size());
-                                int tens = digit_of(left);
-                                if (tens < 0) tens = 1; // “十X” 等价于 “一十X”
-                                int ones = digit_of(right);
-                                if (ones < 0) ones = 0;
-                                return tens * 10 + ones;
-                            }
-                            // 没有“十”，尝试单个中文数字
-                            int single = digit_of(s);
-                            return single >= 0 ? single : 0;
-                        };
-
-                        int minutes = parse_arabic(seg);
-                        if (minutes == 0) {
-                            minutes = parse_chinese(seg);
-                        }
-                        if (minutes > 0) {
-                            Green_Lamp::StartMassageWithMinutes(minutes);
-                            return;
-                        }
-                    }
-
-                    if (content.find("开始按摩") != std::string::npos) {
-                        Green_Lamp::StartMassage();
-                    } else if (content.find("结束按摩") != std::string::npos) {
-                        Green_Lamp::StopMassage();
-                    } else if (content.find("加一档") != std::string::npos) {
-                        Green_Lamp::IncreaseLevel();
-                    } else if (content.find("减一档") != std::string::npos) {
-                        Green_Lamp::DecreaseLevel();
-                    }
-                });
 
                 Schedule([this, display, message = std::move(content)]() {
                     display->SetChatMessage("user", message.c_str());

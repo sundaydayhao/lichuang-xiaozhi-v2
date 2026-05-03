@@ -12,7 +12,7 @@
 
 class UiLcdDisplay;
 
-inline constexpr int kUiMenuRemoteSelfieOptionId = 6;
+inline constexpr int kUiMenuRemoteSelfieOptionId = 5;
 inline constexpr size_t kUiMenuRemoteSelfieDirectionButtonCount = 4;
 inline constexpr size_t kUiMenuRemoteSelfieControlCount = 6;
 

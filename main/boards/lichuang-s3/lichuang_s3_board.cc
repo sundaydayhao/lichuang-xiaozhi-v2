@@ -11,6 +11,7 @@
 #include <esp_lcd_touch_ft5x06.h>
 
 #include <driver/i2c_master.h>
+#include <driver/ledc.h>
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
@@ -19,9 +20,6 @@
 #include <esp_lcd_panel_vendor.h>
 #include <wifi_station.h>
 #include <mutex>
-
-#include "lamp_G.h"
-#include "s620.h"
 
 #include <esp_spiffs.h>
 
@@ -45,10 +43,8 @@ private:
     UiLcdDisplay* display_ = nullptr;
     i2c_master_bus_handle_t i2c_bus_ = nullptr;
     i2c_master_dev_handle_t pca9557_ = nullptr;
-    S620* s620_ = nullptr;
     Esp32Camera* camera_ = nullptr;
     bool camera_probe_attempted_ = false;
-    bool s620_unavailable_logged_ = false;
     uint8_t pca9557_output_state_ = kPca9557DefaultOutput;
     std::mutex camera_mutex_;
     std::string pending_camera_explain_url_;
@@ -56,9 +52,9 @@ private:
 
     void InitializeI2c() {
         i2c_master_bus_config_t i2c_bus_cfg = {
-            .i2c_port = I2C_NUM_0,
-            .sda_io_num = TOUCH_I2C_SDA_PIN,
-            .scl_io_num = TOUCH_I2C_SCL_PIN,
+            .i2c_port = BSP_I2C_NUM,
+            .sda_io_num = BSP_I2C_SDA,
+            .scl_io_num = BSP_I2C_SCL,
             .clk_source = I2C_CLK_SRC_DEFAULT,
             .glitch_ignore_cnt = 7,
             .intr_priority = 0,
@@ -68,7 +64,7 @@ private:
             },
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
-        ESP_LOGI(TAG, "I2C bus initialized on SDA=%d, SCL=%d", TOUCH_I2C_SDA_PIN, TOUCH_I2C_SCL_PIN);
+        ESP_LOGI(TAG, "I2C bus initialized on SDA=%d, SCL=%d", BSP_I2C_SDA, BSP_I2C_SCL);
     }
 
     esp_err_t WritePca9557Reg(uint8_t reg, uint8_t value) {
@@ -99,7 +95,7 @@ private:
         i2c_device_config_t pca9557_config = {
             .dev_addr_length = I2C_ADDR_BIT_LEN_7,
             .device_address = kPca9557Address,
-            .scl_speed_hz = TOUCH_I2C_SPEED_HZ,
+            .scl_speed_hz = BSP_I2C_FREQ_HZ,
             .scl_wait_us = 0,
             .flags = {
                 .disable_ack_check = 0,
@@ -115,15 +111,6 @@ private:
 
     void SelectLcdPanel() {
         SetPca9557Output(kPca9557LcdCsBit, false);
-    }
-
-    void InitializeS620() {
-        if (i2c_bus_ == nullptr) {
-            ESP_LOGE(TAG, "I2C bus not initialized, cannot initialize S620");
-            return;
-        }
-        s620_ = new S620(i2c_bus_);
-        ESP_LOGI(TAG, "S620 instance created");
     }
 
     void InitializeSpi() {
@@ -230,6 +217,8 @@ private:
         camera_probe_attempted_ = true;
 
         camera_config_t config = {};
+        config.ledc_channel = LEDC_CHANNEL_1;
+        config.ledc_timer = LEDC_TIMER_1;
         config.pin_d0 = CAMERA_PIN_D0;
         config.pin_d1 = CAMERA_PIN_D1;
         config.pin_d2 = CAMERA_PIN_D2;
@@ -251,7 +240,7 @@ private:
         config.pixel_format = PIXFORMAT_RGB565;
         config.frame_size = FRAMESIZE_QVGA;
         config.jpeg_quality = 12;
-        config.fb_count = 1;
+        config.fb_count = 2;
         config.fb_location = CAMERA_FB_IN_PSRAM;
         config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
         auto* camera = new Esp32Camera(config);
@@ -321,18 +310,6 @@ private:
         }
     }
 
-    void InitializeAccessories() {
-        if (LAMP_GPIO != GPIO_NUM_NC) {
-            ESP_ERROR_CHECK(gpio_reset_pin(LAMP_GPIO));
-            ESP_ERROR_CHECK(gpio_set_direction(LAMP_GPIO, GPIO_MODE_OUTPUT));
-            gpio_set_level(LAMP_GPIO, 0);
-        }
-
-        if (BOT_PWM != GPIO_NUM_NC) {
-            static Green_Lamp lamp_G(BOT_PWM);
-        }
-    }
-
 public:
     LichuangS3Board() : WifiBoard(),
                         boot_button_(BOOT_BUTTON_GPIO) {
@@ -340,10 +317,8 @@ public:
         InitializePca9557();
         InitializeSpi();
         InitializeLcdDisplay();
-        InitializeS620();
         InitializeTouch();
         InitializeButtons();
-        InitializeAccessories();
         display_->SetCameraPreviewCallback([this]() {
             auto* camera = GetCamera();
             if (camera != nullptr) {
@@ -358,7 +333,6 @@ public:
 
     ~LichuangS3Board() override {
         delete camera_;
-        delete s620_;
         delete display_;
     }
 
@@ -402,26 +376,9 @@ public:
     }
 
     Backlight* GetBacklight() override {
-        static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT);
+        static PwmBacklight backlight(DISPLAY_BACKLIGHT_PIN, DISPLAY_BACKLIGHT_OUTPUT_INVERT,
+                                      DISPLAY_BACKLIGHT_PWM_FREQ_HZ);
         return &backlight;
-    }
-
-    bool GetBatteryLevel(int& level, bool& charging, bool& discharging) override {
-        if (s620_ == nullptr || !s620_->Initialize()) {
-            if (s620_ != nullptr && !s620_unavailable_logged_) {
-                ESP_LOGW(TAG, "S620 unavailable, skip battery status update");
-                s620_unavailable_logged_ = true;
-            }
-            return false;
-        }
-
-        s620_unavailable_logged_ = false;
-        level = s620_->GetBatteryLevel();
-        charging = s620_->IsCharging();
-        discharging = s620_->IsDischarging();
-        ESP_LOGD(TAG, "Battery: %d%%, Charging: %s, Discharging: %s",
-                 level, charging ? "Yes" : "No", discharging ? "Yes" : "No");
-        return true;
     }
 };
 

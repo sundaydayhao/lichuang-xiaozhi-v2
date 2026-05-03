@@ -37,12 +37,11 @@ constexpr int kAiAlarmOptionId = 1;
 constexpr int kEncyclopediaOptionId = 2;
 constexpr int kOralPracticeOptionId = 3;
 constexpr int kVisionOptionId = 4;
-constexpr int kAiMassageOptionId = 5;
-constexpr int kWordDictationOptionId = 8;
-constexpr int kFaceReadingOptionId = 9;
-constexpr int kMagicMirrorOptionId = 10;
-constexpr int kSleepMusicOptionId = 11;
-constexpr int kSettingsOptionId = 12;
+constexpr int kWordDictationOptionId = 7;
+constexpr int kFaceReadingOptionId = 8;
+constexpr int kMagicMirrorOptionId = 9;
+constexpr int kSleepMusicOptionId = 10;
+constexpr int kSettingsOptionId = 11;
 
 constexpr int kStatusBarHeight = 27;
 constexpr int kMenuIconOriginalSize = 48;
@@ -256,8 +255,6 @@ const char* UiLcdDisplay::GetMenuText(int option_id) const {
         return "翻译官";
     case kVisionOptionId:
         return "拍识万物";
-    case kAiMassageOptionId:
-        return "除皱按摩";
     case kUiMenuRemoteSelfieOptionId:
         return UiMenuRemoteSelfie::GetMenuText();
     case kUiMenuAiPrintOptionId:
@@ -287,8 +284,6 @@ const char* UiLcdDisplay::GetMenuIconAssetName(int option_id) const {
         return "menu_oral_practice.png";
     case kVisionOptionId:
         return "menu_vision.png";
-    case kAiMassageOptionId:
-        return "menu_ai_massage.png";
     case kUiMenuRemoteSelfieOptionId:
         return UiMenuRemoteSelfie::GetMenuIconAssetName();
     case kUiMenuAiPrintOptionId:
@@ -314,8 +309,6 @@ const char* UiLcdDisplay::GetFeatureBackgroundAssetName(int option_id) const {
         return "bg_encyclopedia.png";
     case kOralPracticeOptionId:
         return "bg_oral_practice.png";
-    case kAiMassageOptionId:
-        return "bg_ai_massage.png";
     case kWordDictationOptionId:
         return "bg_word_dictation.png";
     case kFaceReadingOptionId:
@@ -330,7 +323,6 @@ bool UiLcdDisplay::IsDialogueSceneOption(int option_id) const {
     case kAiAlarmOptionId:
     case kEncyclopediaOptionId:
     case kOralPracticeOptionId:
-    case kAiMassageOptionId:
     case kUiMenuAiPrintOptionId:
     case kFaceReadingOptionId:
     case kMagicMirrorOptionId:

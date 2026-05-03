@@ -20,7 +20,7 @@
 
 class UiLcdDisplay : public SpiLcdDisplay {
 public:
-    static constexpr size_t kMenuItemCount = 12;
+    static constexpr size_t kMenuItemCount = 11;
 
     UiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
                  int width, int height, int offset_x, int offset_y,
