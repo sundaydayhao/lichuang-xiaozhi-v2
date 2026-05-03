@@ -1160,28 +1160,26 @@ lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, UiBackButtonData* dat
 
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     lv_obj_t* back_btn = lv_btn_create(parent);
-    lv_obj_set_size(back_btn, 60, 40);
-    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, -18, 34);
-    lv_obj_set_style_radius(back_btn, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(back_btn, 1, 0);
-    lv_obj_set_style_border_color(back_btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_size(back_btn, 60, 30);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 0, kStatusBarHeight + 3);
+    lv_obj_set_style_radius(back_btn, 0, 0);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
     lv_obj_set_style_pad_all(back_btn, 0, 0);
-    lv_obj_set_style_shadow_width(back_btn, dark_surface ? 0 : 16, 0);
-    lv_obj_set_style_shadow_opa(back_btn, dark_surface ? LV_OPA_0 : LV_OPA_20, 0);
-    lv_obj_set_style_shadow_color(back_btn, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1C2430), 0);
-    lv_obj_set_style_bg_opa(back_btn, LV_OPA_70, 0);
-    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x111822), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(back_btn, LV_OPA_80, LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_set_style_shadow_opa(back_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, LV_STATE_PRESSED);
     lv_obj_add_flag(back_btn, LV_OBJ_FLAG_FLOATING);
+    lv_obj_clear_flag(back_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_ext_click_area(back_btn, 8);
     lv_obj_set_user_data(back_btn, data);
     lv_obj_add_event_cb(back_btn, OnBackButtonClicked, LV_EVENT_CLICKED, nullptr);
 
     lv_obj_t* label = lv_label_create(back_btn);
-    lv_label_set_text(label, "<");
-    lv_obj_align(label, LV_ALIGN_CENTER, 6, -1);
-    lv_obj_set_style_text_font(label, lvgl_theme->text_font()->font(), 0);
-    lv_obj_set_style_text_color(label, lv_color_white(), 0);
+    lv_label_set_text(label, LV_SYMBOL_LEFT);
+    lv_obj_align(label, LV_ALIGN_CENTER, -10, 0);
+    lv_obj_set_style_text_font(label, lvgl_theme->icon_font()->font(), 0);
+    lv_obj_set_style_text_color(label, dark_surface ? lv_color_white() : lv_color_black(), 0);
     lv_obj_set_style_text_letter_space(label, 0, 0);
 
     lv_obj_move_foreground(back_btn);

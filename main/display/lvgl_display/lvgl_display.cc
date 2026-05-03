@@ -3,6 +3,7 @@
 #include <string>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <font_awesome.h>
 
 #include "lvgl_display.h"
@@ -122,18 +123,21 @@ void LvglDisplay::UpdateStatusBar(bool update_all) {
 
     // Update time
     if (app.GetDeviceState() == kDeviceStateIdle) {
-        if (last_status_update_time_ + std::chrono::seconds(10) < std::chrono::system_clock::now()) {
-            // Set status to clock "HH:MM"
-            time_t now = time(NULL);
-            struct tm* tm = localtime(&now);
-            // Check if the we have already set the time
-            if (tm->tm_year >= 2025 - 1900) {
-                char time_str[16];
-                strftime(time_str, sizeof(time_str), "%H:%M  ", tm);
-                SetStatus(time_str);
-            } else {
-                ESP_LOGW(TAG, "System time is not set, tm_year: %d", tm->tm_year);
+        time_t now = time(nullptr);
+        struct tm timeinfo = {};
+        localtime_r(&now, &timeinfo);
+        if (timeinfo.tm_year >= 2025 - 1900) {
+            char time_str[40];
+            strftime(time_str, sizeof(time_str), "%Y年%m月%d日 %H:%M:%S", &timeinfo);
+            DisplayLockGuard lock(this);
+            if (status_label_ != nullptr &&
+                (notification_label_ == nullptr ||
+                 lv_obj_has_flag(notification_label_, LV_OBJ_FLAG_HIDDEN))) {
+                lv_label_set_text(status_label_, time_str);
+                lv_obj_remove_flag(status_label_, LV_OBJ_FLAG_HIDDEN);
             }
+        } else if (update_all) {
+            ESP_LOGW(TAG, "System time is not set, tm_year: %d", timeinfo.tm_year);
         }
     }
 
@@ -194,7 +198,8 @@ void LvglDisplay::UpdateStatusBar(bool update_all) {
             if (network_label_ != nullptr && icon != nullptr && network_icon_ != icon) {
                 DisplayLockGuard lock(this);
                 network_icon_ = icon;
-                lv_label_set_text(network_label_, network_icon_);
+                std::string network_text = std::string(FONT_AWESOME_BLUETOOTH) + " " + network_icon_;
+                lv_label_set_text(network_label_, network_text.c_str());
             }
         }
     }

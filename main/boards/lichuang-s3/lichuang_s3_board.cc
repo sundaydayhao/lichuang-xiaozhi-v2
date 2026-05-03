@@ -244,6 +244,9 @@ private:
         }
         camera_probe_attempted_ = true;
 
+        SetPca9557Output(kPca9557DvpPwdnBit, false);
+        vTaskDelay(pdMS_TO_TICKS(10));
+
         camera_config_t config = {};
         config.ledc_channel = LEDC_CHANNEL_1;
         config.ledc_timer = LEDC_TIMER_1;
@@ -261,7 +264,7 @@ private:
         config.pin_href = CAMERA_PIN_HREF;
         config.pin_sccb_sda = -1;
         config.pin_sccb_scl = CAMERA_PIN_SIOC;
-        config.sccb_i2c_port = 0;
+        config.sccb_i2c_port = BSP_I2C_NUM;
         config.pin_pwdn = CAMERA_PIN_PWDN;
         config.pin_reset = CAMERA_PIN_RESET;
         config.xclk_freq_hz = XCLK_FREQ_HZ;
