@@ -98,6 +98,8 @@ void LichuangAudioCodec::InitializeI2s() {
     };
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2s_tx_chan_, &std_cfg));
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(i2s_rx_chan_, &std_cfg));
+    ESP_ERROR_CHECK(i2s_channel_enable(i2s_tx_chan_));
+    ESP_ERROR_CHECK(i2s_channel_enable(i2s_rx_chan_));
 
     audio_codec_i2s_cfg_t i2s_cfg = {
         .port = BSP_I2S_NUM,

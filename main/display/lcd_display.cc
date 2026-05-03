@@ -270,7 +270,7 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
     if (buffer == nullptr) {
         ESP_LOGW(TAG, "Failed to allocate DMA buffer for boot clear");
     } else {
-        std::fill(buffer, buffer + width_ * chunk_lines, 0xFFFF);
+        std::fill(buffer, buffer + width_ * chunk_lines, 0x0000);
     }
     for (int y = 0; y < height_; y += chunk_lines) {
         const int y_end = std::min(y + chunk_lines, height_);

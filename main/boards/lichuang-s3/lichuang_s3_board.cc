@@ -13,12 +13,15 @@
 #include <driver/i2c_master.h>
 #include <driver/ledc.h>
 #include <esp_err.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_lvgl_port.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_partition.h>
 #include <esp_lcd_panel_vendor.h>
 #include <wifi_station.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <mutex>
 
 #include <esp_spiffs.h>
@@ -113,6 +116,29 @@ private:
         SetPca9557Output(kPca9557LcdCsBit, false);
     }
 
+    void DrawLcdBootPattern(esp_lcd_panel_handle_t panel) {
+        auto* line = static_cast<uint16_t*>(heap_caps_malloc(
+            DISPLAY_WIDTH * sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+        if (line == nullptr) {
+            ESP_LOGW(TAG, "Failed to allocate LCD boot pattern buffer");
+            ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
+            return;
+        }
+
+        for (int y = 0; y < DISPLAY_HEIGHT; ++y) {
+            const uint16_t color = (y < DISPLAY_HEIGHT / 3) ? 0xF800 :
+                                   (y < DISPLAY_HEIGHT * 2 / 3) ? 0x07E0 : 0x001F;
+            for (int x = 0; x < DISPLAY_WIDTH; ++x) {
+                line[x] = color;
+            }
+            ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel, 0, y, DISPLAY_WIDTH, y + 1, line));
+        }
+
+        ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
+        heap_caps_free(line);
+        ESP_LOGI(TAG, "LCD boot test pattern drawn");
+    }
+
     void InitializeSpi() {
         spi_bus_config_t buscfg = {};
         buscfg.mosi_io_num = DISPLAY_MOSI_PIN;
@@ -145,13 +171,15 @@ private:
 
         ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(panel_io, &panel_config, &panel));
 
+        ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
         SelectLcdPanel();
-        esp_lcd_panel_reset(panel);
-        esp_lcd_panel_init(panel);
-        esp_lcd_panel_invert_color(panel, DISPLAY_INVERT_COLOR);
-        esp_lcd_panel_swap_xy(panel, DISPLAY_SWAP_XY);
-        esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
-        esp_lcd_panel_disp_on_off(panel, true);
+        ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
+        ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel, DISPLAY_INVERT_COLOR));
+        ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel, DISPLAY_SWAP_XY));
+        ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y));
+        DrawLcdBootPattern(panel);
+        GetBacklight()->SetBrightness(75);
+        vTaskDelay(pdMS_TO_TICKS(300));
 
         display_ = new UiLcdDisplay(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT,
                                     DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y,
