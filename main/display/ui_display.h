@@ -30,6 +30,7 @@ public:
     void SetEmotion(const char* emotion) override;
     void SetChatMessage(const char* role, const char* content) override;
     void SetPreviewImage(std::unique_ptr<LvglImage> image) override;
+    void SetTheme(Theme* theme) override;
     void SetCameraPreviewCallback(std::function<void()> callback);
     bool HandleFeatureSpeechRecognized(const std::string& text);
     bool IsRemoteSelfieActive() const;
@@ -197,6 +198,7 @@ private:
     void UpdateStatusBarAppearance(lv_obj_t* target_screen);
     bool ShouldUseTransparentStatusBar(lv_obj_t* target_screen);
     void MoveStatusBarToScreen(lv_obj_t* target_screen);
+    void RaiseBackButtons(lv_obj_t* target_screen);
     void RefreshAiContentLayout(lv_coord_t top_padding);
     lv_obj_t* CreateBackButton(lv_obj_t* parent, UiBackButtonData* data, bool dark_surface = false);
 
@@ -271,6 +273,8 @@ private:
     void ShowDeleteConfirmDialog(const char* filename);
     void DeletePhoto(const char* filename);
     void LoadRawImage(lv_obj_t* img_obj, const char* filepath);
+
+    std::vector<lv_obj_t*> back_buttons_;
 
     static void OnMenuButtonClicked(lv_event_t* e);
     static void OnVisionAiButtonClicked(lv_event_t* e);

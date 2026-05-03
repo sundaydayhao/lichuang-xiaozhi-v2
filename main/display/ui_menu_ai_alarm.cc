@@ -16,7 +16,7 @@
 
 namespace {
 
-constexpr int kStatusBarHeight = 27;
+constexpr int kStatusBarHeight = 40;
 constexpr int kAlarmUiRefreshPeriodUs = 1000 * 1000;
 constexpr const char* kAlarmCountdownPlaceholder = "--:--";
 constexpr std::array<const char*, 7> kWeekdayShortNames = {"日", "一", "二", "三", "四", "五", "六"};
@@ -352,26 +352,7 @@ void UiMenuAiAlarm::RefreshUi(UiLcdDisplay& display) {
 
     lv_obj_set_style_bg_color(display.ai_screen_, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(display.ai_screen_, LV_OPA_COVER, 0);
-    if (display.status_bar_ != nullptr) {
-        lv_obj_set_style_bg_color(display.status_bar_, lv_color_white(), 0);
-        lv_obj_set_style_bg_opa(display.status_bar_, LV_OPA_COVER, 0);
-        lv_obj_set_style_text_color(display.status_bar_, lv_color_hex(0x111827), 0);
-    }
-    if (display.network_label_ != nullptr) {
-        lv_obj_set_style_text_color(display.network_label_, lv_color_hex(0x111827), 0);
-    }
-    if (display.status_label_ != nullptr) {
-        lv_obj_set_style_text_color(display.status_label_, lv_color_hex(0x111827), 0);
-    }
-    if (display.notification_label_ != nullptr) {
-        lv_obj_set_style_text_color(display.notification_label_, lv_color_hex(0x111827), 0);
-    }
-    if (display.mute_label_ != nullptr) {
-        lv_obj_set_style_text_color(display.mute_label_, lv_color_hex(0x111827), 0);
-    }
-    if (display.battery_label_ != nullptr) {
-        lv_obj_set_style_text_color(display.battery_label_, lv_color_hex(0x111827), 0);
-    }
+    display.UpdateStatusBarAppearance(display.ai_screen_);
 
     const int left_margin = 12;
     const int right_margin = 8;

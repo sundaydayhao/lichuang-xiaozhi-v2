@@ -43,7 +43,7 @@ constexpr int kMagicMirrorOptionId = 9;
 constexpr int kSleepMusicOptionId = 10;
 constexpr int kSettingsOptionId = 11;
 
-constexpr int kStatusBarHeight = 27;
+constexpr int kStatusBarHeight = 40;
 constexpr int kMenuIconOriginalSize = 48;
 constexpr int kMenuSwipeThreshold = 14;
 constexpr int kMenuButtonHitPadding = 8;
@@ -57,13 +57,15 @@ constexpr int kBackTargetSettings = 1;
 constexpr int kBackTargetCamera = 2;
 constexpr int kBackTargetGallery = 3;
 constexpr int kBackTargetWordDictation = 4;
+constexpr uint32_t kStatusBarColorHex = 0x008B8B;
+constexpr uint32_t kStatusBarPressedColorHex = 0x006F6F;
 
-lv_opa_t GetStatusBarBackgroundOpa(int width, int height, bool transparent) {
-    if (transparent) {
-        return LV_OPA_TRANSP;
-    }
+lv_color_t GetStatusBarColor() {
+    return lv_color_hex(kStatusBarColorHex);
+}
 
-    return (width == 320 && height == 240) ? LV_OPA_COVER : LV_OPA_50;
+lv_opa_t GetStatusBarBackgroundOpa(int, int, bool) {
+    return LV_OPA_COVER;
 }
 
 struct VisionTaskContext {
@@ -239,6 +241,13 @@ void UiLcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
     }
 
     SpiLcdDisplay::SetPreviewImage(std::move(image));
+}
+
+void UiLcdDisplay::SetTheme(Theme* theme) {
+    SpiLcdDisplay::SetTheme(theme);
+
+    DisplayLockGuard lock(this);
+    UpdateStatusBarAppearance(lv_screen_active());
 }
 
 void UiLcdDisplay::SetCameraPreviewCallback(std::function<void()> callback) {
@@ -1061,12 +1070,8 @@ void UiLcdDisplay::InitializeGallery() {
     CreateBackButton(gallery_screen_, &gallery_back_button_data_);
 }
 
-bool UiLcdDisplay::ShouldUseTransparentStatusBar(lv_obj_t* target_screen) {
-    if (target_screen != ai_screen_) {
-        return false;
-    }
-
-    return !UiMenuAiAlarm::IsPanelVisible(*this);
+bool UiLcdDisplay::ShouldUseTransparentStatusBar(lv_obj_t*) {
+    return false;
 }
 
 void UiLcdDisplay::UpdateStatusBarAppearance(lv_obj_t* target_screen) {
@@ -1074,12 +1079,12 @@ void UiLcdDisplay::UpdateStatusBarAppearance(lv_obj_t* target_screen) {
         return;
     }
 
-    auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     const bool transparent = ShouldUseTransparentStatusBar(target_screen);
     const lv_opa_t background_opa = GetStatusBarBackgroundOpa(width_, height_, transparent);
-    const lv_color_t background_color = lvgl_theme->background_color();
-    const lv_color_t text_color = lvgl_theme->text_color();
+    const lv_color_t background_color = GetStatusBarColor();
+    const lv_color_t text_color = lv_color_white();
 
+    lv_obj_set_size(status_bar_, LV_HOR_RES, kStatusBarHeight);
     lv_obj_set_style_bg_color(status_bar_, background_color, 0);
     lv_obj_set_style_bg_opa(status_bar_, background_opa, 0);
     lv_obj_set_style_text_color(status_bar_, text_color, 0);
@@ -1120,6 +1125,7 @@ void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
     lv_obj_clear_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_move_foreground(status_bar_);
+    RaiseBackButtons(target_screen);
 
     if (content_ != nullptr) {
         lv_obj_update_layout(status_bar_);
@@ -1132,6 +1138,25 @@ void UiLcdDisplay::MoveStatusBarToScreen(lv_obj_t* target_screen) {
         lv_obj_set_size(feature_background_image_, LV_HOR_RES, LV_VER_RES);
         lv_obj_set_pos(feature_background_image_, 0, 0);
         lv_obj_move_to_index(feature_background_image_, 0);
+    }
+}
+
+void UiLcdDisplay::RaiseBackButtons(lv_obj_t* target_screen) {
+    if (target_screen == nullptr) {
+        return;
+    }
+
+    for (auto it = back_buttons_.begin(); it != back_buttons_.end();) {
+        lv_obj_t* button = *it;
+        if (button == nullptr || !lv_obj_is_valid(button)) {
+            it = back_buttons_.erase(it);
+            continue;
+        }
+
+        if (lv_obj_get_parent(button) == target_screen) {
+            lv_obj_move_foreground(button);
+        }
+        ++it;
     }
 }
 
@@ -1157,18 +1182,21 @@ lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, UiBackButtonData* dat
     if (parent == nullptr || data == nullptr) {
         return nullptr;
     }
+    (void)dark_surface;
 
     auto* lvgl_theme = static_cast<LvglTheme*>(GetTheme());
     lv_obj_t* back_btn = lv_btn_create(parent);
     lv_obj_set_size(back_btn, 60, 30);
-    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 0, kStatusBarHeight + 3);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 0, (kStatusBarHeight - 30) / 2);
     lv_obj_set_style_radius(back_btn, 0, 0);
     lv_obj_set_style_border_width(back_btn, 0, 0);
     lv_obj_set_style_pad_all(back_btn, 0, 0);
     lv_obj_set_style_shadow_width(back_btn, 0, 0);
     lv_obj_set_style_shadow_opa(back_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(back_btn, GetStatusBarColor(), 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(kStatusBarPressedColorHex), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_COVER, LV_STATE_PRESSED);
     lv_obj_add_flag(back_btn, LV_OBJ_FLAG_FLOATING);
     lv_obj_clear_flag(back_btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_ext_click_area(back_btn, 8);
@@ -1176,13 +1204,14 @@ lv_obj_t* UiLcdDisplay::CreateBackButton(lv_obj_t* parent, UiBackButtonData* dat
     lv_obj_add_event_cb(back_btn, OnBackButtonClicked, LV_EVENT_CLICKED, nullptr);
 
     lv_obj_t* label = lv_label_create(back_btn);
-    lv_label_set_text(label, LV_SYMBOL_LEFT);
+    lv_label_set_text(label, FONT_AWESOME_ANGLE_LEFT);
     lv_obj_align(label, LV_ALIGN_CENTER, -10, 0);
     lv_obj_set_style_text_font(label, lvgl_theme->icon_font()->font(), 0);
-    lv_obj_set_style_text_color(label, dark_surface ? lv_color_white() : lv_color_black(), 0);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
     lv_obj_set_style_text_letter_space(label, 0, 0);
 
     lv_obj_move_foreground(back_btn);
+    back_buttons_.push_back(back_btn);
     return back_btn;
 }
 

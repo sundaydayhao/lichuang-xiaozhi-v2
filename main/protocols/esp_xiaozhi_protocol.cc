@@ -541,10 +541,8 @@ void EspXiaozhiProtocol::HandleAudio(const uint8_t* data, int len) {
 void EspXiaozhiProtocol::HandleChatEvent(esp_xiaozhi_chat_event_t event, void* event_data) {
     switch (event) {
     case ESP_XIAOZHI_CHAT_EVENT_CHAT_SPEECH_STARTED:
-        EmitTtsState("start");
         break;
     case ESP_XIAOZHI_CHAT_EVENT_CHAT_SPEECH_STOPPED:
-        EmitTtsState("stop");
         break;
     case ESP_XIAOZHI_CHAT_EVENT_CHAT_TTS_STATE: {
         auto* tts = static_cast<esp_xiaozhi_chat_tts_state_t*>(event_data);
@@ -569,8 +567,9 @@ void EspXiaozhiProtocol::HandleChatEvent(esp_xiaozhi_chat_event_t event, void* e
         if (text_data == nullptr || text_data->text == nullptr) {
             break;
         }
-        const char* role = text_data->role == ESP_XIAOZHI_CHAT_TEXT_ROLE_USER ? "user" : "assistant";
-        EmitChatText(role, text_data->text);
+        if (text_data->role == ESP_XIAOZHI_CHAT_TEXT_ROLE_USER) {
+            EmitChatText("user", text_data->text);
+        }
         break;
     }
     case ESP_XIAOZHI_CHAT_EVENT_CHAT_EMOJI: {
@@ -680,19 +679,17 @@ void EspXiaozhiProtocol::EmitTtsState(const char* state, const char* text) {
 }
 
 void EspXiaozhiProtocol::EmitChatText(const char* role, const char* text) {
+    if (role == nullptr || text == nullptr || strcmp(role, "user") != 0) {
+        return;
+    }
+
     cJSON* root = cJSON_CreateObject();
     if (root == nullptr) {
         return;
     }
 
-    if (strcmp(role, "user") == 0) {
-        cJSON_AddStringToObject(root, "type", "stt");
-        cJSON_AddStringToObject(root, "text", text);
-    } else {
-        cJSON_AddStringToObject(root, "type", "tts");
-        cJSON_AddStringToObject(root, "state", "sentence_start");
-        cJSON_AddStringToObject(root, "text", text);
-    }
+    cJSON_AddStringToObject(root, "type", "stt");
+    cJSON_AddStringToObject(root, "text", text);
     EmitJson(root);
 }
 
