@@ -49,18 +49,6 @@ config BOARD_TYPE_BREAD_COMPACT_ML307CAMTOU
     help
         This project is fixed to the bread-compact-ml307camtou board.
 
-choice DISPLAY_LCD_TYPE
-    depends on BOARD_TYPE_BREAD_COMPACT_ML307CAMTOU
-    prompt "LCD Type"
-    default LCD_ST7789_284X240
-    help
-        屏幕分辨率选择
-    config LCD_ST7789_284X240
-        bool "ST7789, 分辨率284*240"
-    config LCD_ST7789_320X240
-        bool "ST7789, 分辨率320*240"
-endchoice
-
 config USE_AFE_WAKE_WORD
     bool "Enable Wake Word Detection (AFE)"
     default y

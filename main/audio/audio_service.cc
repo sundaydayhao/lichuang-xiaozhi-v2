@@ -247,10 +247,9 @@ void AudioService::AudioInputTask() {
             std::vector<int16_t> data;
             int samples = OPUS_FRAME_DURATION_MS * 16000 / 1000;
             if (ReadAudioData(data, 16000, samples)) {
-                // If input channels is 2, we need to fetch the left channel data
-                if (codec_->input_channels() == 2) {
-                    auto mono_data = std::vector<int16_t>(data.size() / 2);
-                    for (size_t i = 0, j = 0; i < mono_data.size(); ++i, j += 2) {
+                if (codec_->input_channels() > 1) {
+                    auto mono_data = std::vector<int16_t>(data.size() / codec_->input_channels());
+                    for (size_t i = 0, j = 0; i < mono_data.size(); ++i, j += codec_->input_channels()) {
                         mono_data[i] = data[j];
                     }
                     data = std::move(mono_data);

@@ -6,28 +6,23 @@
 #include <esp_lcd_panel_vendor.h>
 
 #define AUDIO_INPUT_SAMPLE_RATE  16000
-#define AUDIO_OUTPUT_SAMPLE_RATE 24000
+#define AUDIO_OUTPUT_SAMPLE_RATE 16000
 
-// 如果使用 Duplex I2S 模式，请注释下面一行
-#define AUDIO_I2S_METHOD_SIMPLEX
+#define ADC_I2S_CHANNEL 4
+#define CODEC_DEFAULT_SAMPLE_RATE 16000
+#define CODEC_DEFAULT_BIT_WIDTH 32
+#define CODEC_DEFAULT_ADC_VOLUME 24.0
+#define CODEC_DEFAULT_CHANNEL 2
+#define ES7210_CODEC_ADDR 0x82
 
-#ifdef AUDIO_I2S_METHOD_SIMPLEX
-
-#define AUDIO_I2S_MIC_GPIO_WS   GPIO_NUM_1
-#define AUDIO_I2S_MIC_GPIO_SCK  GPIO_NUM_2
-#define AUDIO_I2S_MIC_GPIO_DIN  GPIO_NUM_42
-#define AUDIO_I2S_SPK_GPIO_DOUT GPIO_NUM_39
-#define AUDIO_I2S_SPK_GPIO_BCLK GPIO_NUM_40
-#define AUDIO_I2S_SPK_GPIO_LRCK GPIO_NUM_41
-
-#else
-
-#define AUDIO_I2S_GPIO_WS GPIO_NUM_4
-#define AUDIO_I2S_GPIO_BCLK GPIO_NUM_5
-#define AUDIO_I2S_GPIO_DIN  GPIO_NUM_6
-#define AUDIO_I2S_GPIO_DOUT GPIO_NUM_7
-
-#endif
+#define BSP_I2C_NUM I2C_NUM_0
+#define BSP_I2S_NUM I2S_NUM_1
+#define GPIO_I2S_LRCK GPIO_NUM_13
+#define GPIO_I2S_MCLK GPIO_NUM_38
+#define GPIO_I2S_SCLK GPIO_NUM_14
+#define GPIO_I2S_SDIN GPIO_NUM_12
+#define GPIO_I2S_DOUT GPIO_NUM_45
+#define GPIO_PWR_CTRL GPIO_NUM_NC
 
 #define BUILTIN_LED_GPIO        GPIO_NUM_48
 #define BOOT_BUTTON_GPIO        GPIO_NUM_0
@@ -56,81 +51,43 @@
 #define CAMERA_MIRROR_X false
 #define CAMERA_FLIP_Y true
 
-#define DISPLAY_BACKLIGHT_PIN GPIO_NUM_48
-#define DISPLAY_MOSI_PIN      GPIO_NUM_20
-#define DISPLAY_CLK_PIN       GPIO_NUM_19
-#define DISPLAY_DC_PIN        GPIO_NUM_47
+#define DISPLAY_BACKLIGHT_PIN GPIO_NUM_42
+#define DISPLAY_MOSI_PIN      GPIO_NUM_40
+#define DISPLAY_CLK_PIN       GPIO_NUM_41
+#define DISPLAY_DC_PIN        GPIO_NUM_39
 #define DISPLAY_RST_PIN       GPIO_NUM_NC
-#define DISPLAY_CS_PIN        GPIO_NUM_45
+#define DISPLAY_CS_PIN        GPIO_NUM_NC
 
-#define TOUCH_I2C_SDA_PIN  CAMERA_PIN_SIOD  // GPIO_NUM_4
-#define TOUCH_I2C_SCL_PIN  CAMERA_PIN_SIOC  // GPIO_NUM_5
-#define TOUCH_MIRROR_X false
-#define TOUCH_MIRROR_Y true
+#define TOUCH_I2C_SDA_PIN  GPIO_NUM_1
+#define TOUCH_I2C_SCL_PIN  GPIO_NUM_2
+#define TOUCH_MIRROR_X true
+#define TOUCH_MIRROR_Y false
 #define TOUCH_SWAP_XY true
-#define TOUCH_I2C_SPEED_HZ 400000
-
-#if CONFIG_LCD_ST7789_284X240
-#define TOUCH_CONTROLLER_CST816D
-#define TOUCH_I2C_ADDRESS 0x15
-#elif CONFIG_LCD_ST7789_320X240
-#define TOUCH_CONTROLLER_FT5X06
+#define TOUCH_I2C_SPEED_HZ 100000
 #define TOUCH_I2C_ADDRESS 0x38
-#else
-#error "Select a touch controller configuration"
-#endif
+#define TOUCH_CONTROLLER_FT5X06
 
 #define LCD_TYPE_ST7789_SERIAL
 
-#if CONFIG_LCD_ST7789_284X240
-#define DISPLAY_WIDTH   284
-#define DISPLAY_HEIGHT  240
-#define DISPLAY_MIRROR_X false
-#define DISPLAY_MIRROR_Y true
-#define DISPLAY_SWAP_XY true
-#define DISPLAY_OFFSET_X  36
-#define DISPLAY_OFFSET_Y  0
-#define DISPLAY_INVERT_COLOR    true
-#define DISPLAY_DATA_ENDIAN LCD_RGB_DATA_ENDIAN_BIG
-#define DISPLAY_SWAP_BYTES 1
-#define DISPLAY_RGB_ORDER  LCD_RGB_ELEMENT_ORDER_RGB
-#elif CONFIG_LCD_ST7789_320X240
 #define DISPLAY_WIDTH   320
 #define DISPLAY_HEIGHT  240
-#define DISPLAY_MIRROR_X false
-#define DISPLAY_MIRROR_Y true
+#define DISPLAY_MIRROR_X true
+#define DISPLAY_MIRROR_Y false
 #define DISPLAY_SWAP_XY true
 #define DISPLAY_OFFSET_X  0
 #define DISPLAY_OFFSET_Y  0
-#define DISPLAY_INVERT_COLOR    false
-#define DISPLAY_DATA_ENDIAN LCD_RGB_DATA_ENDIAN_LITTLE
-#define DISPLAY_SWAP_BYTES 0
+#define DISPLAY_INVERT_COLOR true
 #define DISPLAY_RGB_ORDER  LCD_RGB_ELEMENT_ORDER_RGB
-#else
-#error "Select an LCD resolution"
-#endif
-#define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
-#define DISPLAY_SPI_MODE 0
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-esp_err_t
-bsp_lcd_new_panel_st7789(const esp_lcd_panel_io_handle_t io, const esp_lcd_panel_dev_config_t *panel_dev_config,
-                         esp_lcd_panel_handle_t *ret_panel);
-
-#ifdef __cplusplus
-}
-#endif
-
+#define DISPLAY_BACKLIGHT_OUTPUT_INVERT true
+#define DISPLAY_SPI_MODE 2
+#define DISPLAY_PIXEL_CLOCK_HZ (80 * 1000 * 1000)
 
 #define ML307_RX_PIN GPIO_NUM_38
 #define ML307_TX_PIN GPIO_NUM_3
 #define ML307_EN_PIN GPIO_NUM_46
 
 // A MCP Test: Control a lamp
-#define LAMP_GPIO GPIO_NUM_14
+#define LAMP_GPIO GPIO_NUM_NC
 
 #define BOT_PWM GPIO_NUM_21
 

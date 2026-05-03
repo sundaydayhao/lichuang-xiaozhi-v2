@@ -1,5 +1,5 @@
 #include "dual_network_board.h"
-#include "codecs/no_audio_codec.h"
+#include "codecs/lichuang_audio_codec.h"
 #include "display/ui_display.h"
 #include "application.h"
 #include "assets/lang_config.h"
@@ -9,11 +9,7 @@
 #include "esp32_camera.h"
 #include "settings.h"
 
-#if defined(TOUCH_CONTROLLER_CST816D)
-#include <esp_lcd_touch_cst816s.h>
-#elif defined(TOUCH_CONTROLLER_FT5X06)
 #include <esp_lcd_touch_ft5x06.h>
-#endif
 
 #include <driver/i2c_master.h>
 #include <esp_err.h>
@@ -40,13 +36,24 @@
 
 class CompactMl307ctBoard : public DualNetworkBoard {
 private:
+    static constexpr uint8_t kPca9557Address = 0x19;
+    static constexpr uint8_t kPca9557OutputPort = 0x01;
+    static constexpr uint8_t kPca9557ConfigurationPort = 0x03;
+    static constexpr uint8_t kPca9557LcdCsBit = 1 << 0;
+    static constexpr uint8_t kPca9557PaEnBit = 1 << 1;
+    static constexpr uint8_t kPca9557DvpPwdnBit = 1 << 2;
+    static constexpr uint8_t kPca9557DefaultOutput = kPca9557LcdCsBit | kPca9557DvpPwdnBit;
+    static constexpr uint8_t kPca9557OutputConfig = 0xF8;
+
     Button boot_button_;
     UiLcdDisplay* display_ = nullptr;
     i2c_master_bus_handle_t i2c_bus_ = nullptr;
+    i2c_master_dev_handle_t pca9557_ = nullptr;
     S620* s620_ = nullptr;
     Esp32Camera* camera_ = nullptr;
     bool camera_probe_attempted_ = false;
     bool s620_unavailable_logged_ = false;
+    uint8_t pca9557_output_state_ = kPca9557DefaultOutput;
     std::mutex camera_mutex_;
     std::string pending_camera_explain_url_;
     std::string pending_camera_explain_token_;
@@ -61,8 +68,8 @@ private:
     void InitializeI2c() {
         i2c_master_bus_config_t i2c_bus_cfg = {
             .i2c_port = I2C_NUM_0,
-            .sda_io_num = (gpio_num_t)CAMERA_PIN_SIOD,
-            .scl_io_num = (gpio_num_t)CAMERA_PIN_SIOC,
+            .sda_io_num = TOUCH_I2C_SDA_PIN,
+            .scl_io_num = TOUCH_I2C_SCL_PIN,
             .clk_source = I2C_CLK_SRC_DEFAULT,
             .glitch_ignore_cnt = 7,
             .intr_priority = 0,
@@ -72,7 +79,53 @@ private:
             },
         };
         ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_));
-        ESP_LOGI(TAG, "I2C bus initialized on SDA=%d, SCL=%d", CAMERA_PIN_SIOD, CAMERA_PIN_SIOC);
+        ESP_LOGI(TAG, "I2C bus initialized on SDA=%d, SCL=%d", TOUCH_I2C_SDA_PIN, TOUCH_I2C_SCL_PIN);
+    }
+
+    esp_err_t WritePca9557Reg(uint8_t reg, uint8_t value) {
+        if (pca9557_ == nullptr) {
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        uint8_t buffer[2] = {reg, value};
+        return i2c_master_transmit(pca9557_, buffer, sizeof(buffer), 100);
+    }
+
+    void SetPca9557Output(uint8_t bit, bool level) {
+        if (level) {
+            pca9557_output_state_ |= bit;
+        } else {
+            pca9557_output_state_ &= ~bit;
+        }
+
+        ESP_ERROR_CHECK(WritePca9557Reg(kPca9557OutputPort, pca9557_output_state_));
+    }
+
+    void InitializePca9557() {
+        if (i2c_bus_ == nullptr) {
+            ESP_LOGE(TAG, "I2C bus not initialized, cannot initialize PCA9557");
+            return;
+        }
+
+        i2c_device_config_t pca9557_config = {
+            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+            .device_address = kPca9557Address,
+            .scl_speed_hz = TOUCH_I2C_SPEED_HZ,
+            .scl_wait_us = 0,
+            .flags = {
+                .disable_ack_check = 0,
+            },
+        };
+        ESP_ERROR_CHECK(i2c_master_bus_add_device(i2c_bus_, &pca9557_config, &pca9557_));
+
+        pca9557_output_state_ = kPca9557DefaultOutput;
+        ESP_ERROR_CHECK(WritePca9557Reg(kPca9557OutputPort, pca9557_output_state_));
+        ESP_ERROR_CHECK(WritePca9557Reg(kPca9557ConfigurationPort, kPca9557OutputConfig));
+        ESP_LOGI(TAG, "PCA9557 initialized for LCD CS, PA EN and DVP PWDN");
+    }
+
+    void SelectLcdPanel() {
+        SetPca9557Output(kPca9557LcdCsBit, false);
     }
 
     void InitializeS620() {
@@ -80,7 +133,7 @@ private:
             ESP_LOGE(TAG, "I2C bus not initialized, cannot initialize S620");
             return;
         }
-        s620_ = new S620(i2c_bus_, 0x38);
+        s620_ = new S620(i2c_bus_);
         ESP_LOGI(TAG, "S620 instance created");
     }
 
@@ -103,7 +156,7 @@ private:
         io_config.cs_gpio_num = DISPLAY_CS_PIN;
         io_config.dc_gpio_num = DISPLAY_DC_PIN;
         io_config.spi_mode = DISPLAY_SPI_MODE;
-        io_config.pclk_hz = 40 * 1000 * 1000;
+        io_config.pclk_hz = DISPLAY_PIXEL_CLOCK_HZ;
         io_config.trans_queue_depth = 10;
         io_config.lcd_cmd_bits = 8;
         io_config.lcd_param_bits = 8;
@@ -111,19 +164,18 @@ private:
 
         esp_lcd_panel_dev_config_t panel_config = {};
         panel_config.reset_gpio_num = DISPLAY_RST_PIN;
-#if !CONFIG_LCD_ST7789_320X240
         panel_config.rgb_ele_order = DISPLAY_RGB_ORDER;
-#endif
-        panel_config.data_endian = DISPLAY_DATA_ENDIAN;
         panel_config.bits_per_pixel = 16;
 
-        ESP_ERROR_CHECK(bsp_lcd_new_panel_st7789(panel_io, &panel_config, &panel));
+        ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(panel_io, &panel_config, &panel));
 
+        SelectLcdPanel();
         esp_lcd_panel_reset(panel);
         esp_lcd_panel_init(panel);
         esp_lcd_panel_invert_color(panel, DISPLAY_INVERT_COLOR);
         esp_lcd_panel_swap_xy(panel, DISPLAY_SWAP_XY);
         esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
+        esp_lcd_panel_disp_on_off(panel, true);
 
         display_ = new UiLcdDisplay(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT,
                                     DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y,
@@ -167,13 +219,7 @@ private:
             },
         };
 
-#if defined(TOUCH_CONTROLLER_CST816D)
-        ret = esp_lcd_touch_new_i2c_cst816s(tp_io_handle, &tp_cfg, &tp);
-#elif defined(TOUCH_CONTROLLER_FT5X06)
         ret = esp_lcd_touch_new_i2c_ft5x06(tp_io_handle, &tp_cfg, &tp);
-#else
-        ret = ESP_ERR_NOT_SUPPORTED;
-#endif
 
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Touch screen initialization failed: %s (0x%x)", esp_err_to_name(ret), ret);
@@ -303,17 +349,15 @@ private:
     }
 
     void InitializeAccessories() {
-        gpio_config_t lamp_config = {
-            .pin_bit_mask = (1ULL << LAMP_GPIO),
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE,
-        };
-        ESP_ERROR_CHECK(gpio_config(&lamp_config));
-        gpio_set_level(LAMP_GPIO, 0);
+        if (LAMP_GPIO != GPIO_NUM_NC) {
+            ESP_ERROR_CHECK(gpio_reset_pin(LAMP_GPIO));
+            ESP_ERROR_CHECK(gpio_set_direction(LAMP_GPIO, GPIO_MODE_OUTPUT));
+            gpio_set_level(LAMP_GPIO, 0);
+        }
 
-        static Green_Lamp lamp_G(BOT_PWM);
+        if (BOT_PWM != GPIO_NUM_NC) {
+            static Green_Lamp lamp_G(BOT_PWM);
+        }
     }
 
     bool TryWifiConnection() {
@@ -392,6 +436,7 @@ public:
         }
 
         InitializeI2c();
+        InitializePca9557();
         InitializeSpi();
         InitializeLcdDisplay();
         InitializeS620();
@@ -464,14 +509,10 @@ public:
     }
 
     AudioCodec* GetAudioCodec() override {
-#ifdef AUDIO_I2S_METHOD_SIMPLEX
-        static NoAudioCodecSimplex audio_codec(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
-            AUDIO_I2S_SPK_GPIO_BCLK, AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT,
-            AUDIO_I2S_MIC_GPIO_SCK, AUDIO_I2S_MIC_GPIO_WS, AUDIO_I2S_MIC_GPIO_DIN);
-#else
-        static NoAudioCodecDuplex audio_codec(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
-            AUDIO_I2S_GPIO_BCLK, AUDIO_I2S_GPIO_WS, AUDIO_I2S_GPIO_DOUT, AUDIO_I2S_GPIO_DIN);
-#endif
+        static LichuangAudioCodec audio_codec(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
+            i2c_bus_, [this](bool enable) {
+                SetPca9557Output(kPca9557PaEnBit, enable);
+            });
         return &audio_codec;
     }
 

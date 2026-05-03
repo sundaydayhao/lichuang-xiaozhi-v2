@@ -36,24 +36,8 @@ def merge_bin():
         print("merge bin failed")
         sys.exit(1)
 
-def get_display_resolution(sdkconfig_path="sdkconfig"):
-    if not os.path.exists(sdkconfig_path):
-        return None
-
-    with open(sdkconfig_path) as f:
-        content = f.read()
-
-    if "CONFIG_LCD_ST7789_320X240=y" in content:
-        return "320x240"
-    if "CONFIG_LCD_ST7789_284X240=y" in content:
-        return "284x240"
-    return None
-
 def get_firmware_name(name, sdkconfig_path="sdkconfig"):
-    resolution = get_display_resolution(sdkconfig_path)
-    if resolution is None or name.endswith(f"-{resolution}"):
-        return name
-    return f"{name}-{resolution}"
+    return name
 
 def export_bin(board_type, project_version):
     if not os.path.exists("releases"):

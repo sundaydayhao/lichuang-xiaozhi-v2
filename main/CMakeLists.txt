@@ -1,7 +1,7 @@
 # Define source files
 set(SOURCES "audio/audio_codec.cc"
             "audio/audio_service.cc"
-            "audio/codecs/no_audio_codec.cc"
+            "audio/codecs/lichuang_audio_codec.cc"
             "audio/processors/audio_debugger.cc"
             "led/single_led.cc"
             "led/circular_strip.cc"

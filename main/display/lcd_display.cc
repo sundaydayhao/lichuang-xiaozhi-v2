@@ -35,13 +35,7 @@ constexpr lv_opa_t kCompactSafeMessageBubbleOpa = LV_OPA_COVER;
 constexpr lv_opa_t kDefaultStatusBarOpa = LV_OPA_50;
 constexpr lv_opa_t kCompactSafeStatusBarOpa = LV_OPA_COVER;
 
-#if defined(CONFIG_LCD_ST7789_284X240) && CONFIG_LCD_ST7789_284X240
 constexpr bool kDisplaySwapBytes = true;
-#elif defined(CONFIG_LCD_ST7789_320X240) && CONFIG_LCD_ST7789_320X240
-constexpr bool kDisplaySwapBytes = false;
-#else
-constexpr bool kDisplaySwapBytes = false;
-#endif
 
 lv_obj_t* TakeValidObject(lv_obj_t*& object) {
     if (object != nullptr && lv_obj_is_valid(object)) {
