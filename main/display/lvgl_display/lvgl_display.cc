@@ -180,7 +180,7 @@ void LvglDisplay::UpdateStatusBar(bool update_all) {
     // 每 10 秒更新一次网络图标
     static int seconds_counter = 0;
     if (update_all || seconds_counter++ % 10 == 0) {
-        // 升级固件时，不读取 4G 网络状态，避免占用 UART 资源
+        // 升级固件时暂停刷新网络图标，避免打断升级流程
         auto device_state = Application::GetInstance().GetDeviceState();
         static const std::vector<DeviceState> allowed_states = {
             kDeviceStateIdle,

@@ -82,10 +82,6 @@
 #define DISPLAY_SPI_MODE 2
 #define DISPLAY_PIXEL_CLOCK_HZ (80 * 1000 * 1000)
 
-#define ML307_RX_PIN GPIO_NUM_38
-#define ML307_TX_PIN GPIO_NUM_3
-#define ML307_EN_PIN GPIO_NUM_46
-
 // A MCP Test: Control a lamp
 #define LAMP_GPIO GPIO_NUM_NC
 

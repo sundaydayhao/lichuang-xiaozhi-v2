@@ -6,7 +6,7 @@
 #include "esp_xiaozhi_protocol.h"
 #include "assets/lang_config.h"
 #include "assets.h"
-#include "boards/bread-compact-ml307camtou/lamp_G.h"
+#include "boards/lichuang-s3/lamp_G.h"
 #include "display/ui_display.h"
 #include "display/ui_menu_ai_print.h"
 #include "settings.h"

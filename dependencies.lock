@@ -1,14 +1,4 @@
 dependencies:
-  78/esp-ml307:
-    component_hash: 57c8cc3309fb3da9195ec861cba3726b5cf24c362def803e7174c0b1d72e60e3
-    dependencies:
-    - name: idf
-      require: private
-      version: '>=5.3'
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 3.3.7
   78/esp-opus:
     component_hash: 8182b733f071d7bfe1e837f4c9f8649a63e4c937177f089e65772880c02f2e17
     dependencies:
@@ -280,7 +270,6 @@ dependencies:
       type: service
     version: 1.0.6
 direct_dependencies:
-- 78/esp-ml307
 - 78/esp-opus-encoder
 - 78/esp-wifi-connect
 - 78/xiaozhi-fonts
@@ -296,6 +285,6 @@ direct_dependencies:
 - idf
 - lvgl/lvgl
 - txp666/otto-emoji-gif-component
-manifest_hash: eeb3c82e1948c16b59e3f8c2d4aa82703f3e38d5ad9013663f6f7bbb3ec38363
+manifest_hash: 54f0b095fad89d49034cc9e94f4b994b91877cffc60bfedc45347f1068f79650
 target: esp32s3
 version: 2.0.0

@@ -42,12 +42,12 @@ choice
         bool "English"
 endchoice
 
-config BOARD_TYPE_BREAD_COMPACT_ML307CAMTOU
+config BOARD_TYPE_LICHUANG_S3
     bool
     default y
     depends on IDF_TARGET_ESP32S3
     help
-        This project is fixed to the bread-compact-ml307camtou board.
+        This project is fixed to the Lichuang ESP32-S3 board.
 
 config USE_AFE_WAKE_WORD
     bool "Enable Wake Word Detection (AFE)"

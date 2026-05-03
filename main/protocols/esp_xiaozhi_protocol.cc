@@ -8,7 +8,7 @@
 #include "esp32_camera.h"
 #include "lvgl_theme.h"
 #include "ui_display.h"
-#include "boards/bread-compact-ml307camtou/lamp_G.h"
+#include "boards/lichuang-s3/lamp_G.h"
 
 #include <cstring>
 #include <exception>

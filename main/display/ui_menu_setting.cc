@@ -2,14 +2,12 @@
 
 #include "application.h"
 #include "board.h"
-#include "dual_network_board.h"
 #include "lvgl_theme.h"
 #include "settings.h"
 #include "system_info.h"
 #include "ui_display.h"
 #include "assets/lang_config.h"
 
-#include <at_modem.h>
 #include <esp_app_desc.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -41,29 +39,11 @@ const char* UiMenuSetting::GetSettingsTitle() {
 
 const char* UiMenuSetting::GetSettingsItemName(int index) {
     static const char* kTexts[kUiMenuSettingItemCount] = {
-        "网络切换",
         "服务器切换",
         "语言切换",
         "关于本机",
     };
     return (index >= 0 && index < static_cast<int>(kUiMenuSettingItemCount)) ? kTexts[index] : "";
-}
-
-const char* UiMenuSetting::GetNetworkSwitchOptionName(int index) {
-    static const char* kTexts[kUiMenuSettingNetworkOptionCount] = {
-        "WiFi",
-        "4G",
-    };
-    return (index >= 0 && index < static_cast<int>(kUiMenuSettingNetworkOptionCount)) ? kTexts[index] : "";
-}
-
-int UiMenuSetting::GetCurrentNetworkSwitchOptionIndex() {
-    const auto* dual_network_board = dynamic_cast<DualNetworkBoard*>(&Board::GetInstance());
-    if (dual_network_board == nullptr) {
-        return -1;
-    }
-
-    return dual_network_board->GetNetworkType() == NetworkType::WIFI ? 0 : 1;
 }
 
 const char* UiMenuSetting::GetServerSwitchOptionName(int index) {
@@ -114,7 +94,6 @@ const char* UiMenuSetting::GetAboutInfoTitle(int index) {
         "绑定验证码",
         "服务器地址",
         "WiFi MAC",
-        "4G IMEI",
         "IP地址",
         "UUID",
     };
@@ -148,16 +127,6 @@ std::string UiMenuSetting::GetServerAddressForDisplay() {
 std::string UiMenuSetting::GetWifiMacAddressForDisplay() {
     std::string mac = SystemInfo::GetMacAddress();
     return mac.empty() ? "unknown" : mac;
-}
-
-std::string UiMenuSetting::Get4gImeiForDisplay() {
-    auto* modem = dynamic_cast<AtModem*>(Board::GetInstance().GetNetwork());
-    if (modem == nullptr) {
-        return "未配置";
-    }
-
-    std::string imei = modem->GetImei();
-    return imei.empty() ? "未配置" : imei;
 }
 
 std::string UiMenuSetting::GetIpAddressForDisplay() {
@@ -246,89 +215,6 @@ void UiMenuSetting::InitializeSettingsScreen(UiLcdDisplay& display) {
     display.CreateBackButton(state.settings_screen, &state.settings_back_button_data);
 }
 
-void UiMenuSetting::InitializeNetworkSwitchScreen(UiLcdDisplay& display) {
-    DisplayLockGuard lock(&display);
-    auto& state = display.menu_setting_;
-
-    if (state.network_switch_screen != nullptr) {
-        return;
-    }
-
-    auto* lvgl_theme = static_cast<LvglTheme*>(display.GetTheme());
-
-    state.network_switch_screen = lv_obj_create(nullptr);
-    lv_obj_set_style_bg_color(state.network_switch_screen, lv_color_white(), 0);
-    lv_obj_set_style_border_width(state.network_switch_screen, 0, 0);
-    lv_obj_set_style_pad_all(state.network_switch_screen, 0, 0);
-    lv_obj_set_scrollbar_mode(state.network_switch_screen, LV_SCROLLBAR_MODE_OFF);
-
-    state.network_switch_title_label = lv_label_create(state.network_switch_screen);
-    lv_label_set_text(state.network_switch_title_label, GetSettingsItemName(0));
-    lv_obj_align(state.network_switch_title_label, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_set_style_text_font(state.network_switch_title_label, lvgl_theme->text_font()->font(), 0);
-    lv_obj_set_style_text_color(state.network_switch_title_label, lv_color_black(), 0);
-
-    state.network_switch_hint_label = lv_label_create(state.network_switch_screen);
-    lv_label_set_text(state.network_switch_hint_label, "选择切换到哪个网络");
-    lv_obj_align(state.network_switch_hint_label, LV_ALIGN_TOP_MID, 0, 68);
-    lv_obj_set_style_text_font(state.network_switch_hint_label, lvgl_theme->text_font()->font(), 0);
-    lv_obj_set_style_text_color(state.network_switch_hint_label, lv_color_hex(0x8A8A8A), 0);
-
-    lv_obj_t* content = lv_obj_create(state.network_switch_screen);
-    lv_obj_set_size(content, LV_HOR_RES, LV_VER_RES - 120);
-    lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 108);
-    lv_obj_set_style_bg_color(content, lv_color_white(), 0);
-    lv_obj_set_style_border_width(content, 0, 0);
-    lv_obj_set_style_pad_all(content, 0, 0);
-    lv_obj_set_scroll_dir(content, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_OFF);
-
-    const int item_height = 54;
-    for (int i = 0; i < static_cast<int>(kUiMenuSettingNetworkOptionCount); ++i) {
-        lv_obj_t* item = lv_btn_create(content);
-        lv_obj_set_size(item, LV_HOR_RES, item_height);
-        lv_obj_set_pos(item, 0, i * item_height);
-        lv_obj_set_style_radius(item, 0, 0);
-        lv_obj_set_style_bg_color(item, lv_color_white(), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(item, 0, 0);
-        lv_obj_set_style_shadow_width(item, 0, 0);
-        lv_obj_set_style_pad_left(item, 16, 0);
-        lv_obj_set_style_pad_right(item, 16, 0);
-
-        state.network_switch_option_buttons[i] = item;
-        state.network_switch_option_labels[i] = lv_label_create(item);
-        lv_label_set_text(state.network_switch_option_labels[i], GetNetworkSwitchOptionName(i));
-        lv_obj_align(state.network_switch_option_labels[i], LV_ALIGN_LEFT_MID, 0, 0);
-        lv_obj_set_style_text_color(state.network_switch_option_labels[i], lv_color_black(), 0);
-        lv_obj_set_style_text_font(state.network_switch_option_labels[i], lvgl_theme->text_font()->font(), 0);
-
-        state.network_switch_option_state_labels[i] = lv_label_create(item);
-        lv_label_set_text(state.network_switch_option_state_labels[i], "");
-        lv_obj_align(state.network_switch_option_state_labels[i], LV_ALIGN_RIGHT_MID, 0, 0);
-        lv_obj_set_style_text_color(state.network_switch_option_state_labels[i], lv_color_hex(0x2A8F63), 0);
-        lv_obj_set_style_text_font(state.network_switch_option_state_labels[i], lvgl_theme->text_font()->font(), 0);
-
-        state.network_switch_option_data[i] = UiMenuSettingNetworkOptionData{&display, i};
-        lv_obj_set_user_data(item, &state.network_switch_option_data[i]);
-        lv_obj_add_event_cb(item, OnNetworkSwitchOptionClicked, LV_EVENT_CLICKED, nullptr);
-
-        if (i < static_cast<int>(kUiMenuSettingNetworkOptionCount) - 1) {
-            lv_obj_t* separator = lv_obj_create(content);
-            lv_obj_set_size(separator, LV_HOR_RES - 32, 1);
-            lv_obj_set_pos(separator, 16, (i + 1) * item_height);
-            lv_obj_set_style_bg_color(separator, lv_color_hex(0xD9D9D9), 0);
-            lv_obj_set_style_bg_opa(separator, LV_OPA_COVER, 0);
-            lv_obj_set_style_border_width(separator, 0, 0);
-            lv_obj_set_style_radius(separator, 0, 0);
-            lv_obj_clear_flag(separator, LV_OBJ_FLAG_CLICKABLE);
-        }
-    }
-
-    state.network_switch_back_button_data = UiBackButtonData{&display, kBackTargetSettings};
-    display.CreateBackButton(state.network_switch_screen, &state.network_switch_back_button_data);
-}
-
 void UiMenuSetting::InitializeServerSwitchScreen(UiLcdDisplay& display) {
     DisplayLockGuard lock(&display);
     auto& state = display.menu_setting_;
@@ -346,7 +232,7 @@ void UiMenuSetting::InitializeServerSwitchScreen(UiLcdDisplay& display) {
     lv_obj_set_scrollbar_mode(state.server_switch_screen, LV_SCROLLBAR_MODE_OFF);
 
     state.server_switch_title_label = lv_label_create(state.server_switch_screen);
-    lv_label_set_text(state.server_switch_title_label, GetSettingsItemName(1));
+    lv_label_set_text(state.server_switch_title_label, GetSettingsItemName(0));
     lv_obj_align(state.server_switch_title_label, LV_ALIGN_TOP_MID, 0, 40);
     lv_obj_set_style_text_font(state.server_switch_title_label, lvgl_theme->text_font()->font(), 0);
     lv_obj_set_style_text_color(state.server_switch_title_label, lv_color_black(), 0);
@@ -423,7 +309,7 @@ void UiMenuSetting::InitializeLanguageSwitchScreen(UiLcdDisplay& display) {
     lv_obj_set_scrollbar_mode(state.language_switch_screen, LV_SCROLLBAR_MODE_OFF);
 
     state.language_switch_title_label = lv_label_create(state.language_switch_screen);
-    lv_label_set_text(state.language_switch_title_label, GetSettingsItemName(2));
+    lv_label_set_text(state.language_switch_title_label, GetSettingsItemName(1));
     lv_obj_align(state.language_switch_title_label, LV_ALIGN_TOP_MID, 0, 40);
     lv_obj_set_style_text_font(state.language_switch_title_label, lvgl_theme->text_font()->font(), 0);
     lv_obj_set_style_text_color(state.language_switch_title_label, lv_color_black(), 0);
@@ -556,18 +442,6 @@ void UiMenuSetting::ShowSettingsScreen(UiLcdDisplay& display) {
     display.MoveStatusBarToScreen(state.settings_screen);
 }
 
-void UiMenuSetting::ShowNetworkSwitchScreen(UiLcdDisplay& display) {
-    auto& state = display.menu_setting_;
-    if (state.network_switch_screen == nullptr) {
-        InitializeNetworkSwitchScreen(display);
-    }
-
-    RefreshNetworkSwitchScreen(display);
-    DisplayLockGuard lock(&display);
-    lv_screen_load(state.network_switch_screen);
-    display.MoveStatusBarToScreen(state.network_switch_screen);
-}
-
 void UiMenuSetting::ShowServerSwitchScreen(UiLcdDisplay& display) {
     auto& state = display.menu_setting_;
     if (state.server_switch_screen == nullptr) {
@@ -607,54 +481,6 @@ void UiMenuSetting::ShowAboutScreen(UiLcdDisplay& display) {
     display.MoveStatusBarToScreen(state.about_screen);
 }
 
-void UiMenuSetting::RefreshNetworkSwitchScreen(UiLcdDisplay& display) {
-    auto& state = display.menu_setting_;
-    if (state.network_switch_title_label == nullptr || state.network_switch_hint_label == nullptr) {
-        return;
-    }
-
-    DisplayLockGuard lock(&display);
-    lv_label_set_text(state.network_switch_title_label, GetSettingsItemName(0));
-
-    const int current_index = GetCurrentNetworkSwitchOptionIndex();
-    if (current_index >= 0) {
-        lv_label_set_text(state.network_switch_hint_label, "选择切换到哪个网络");
-    } else {
-        lv_label_set_text(state.network_switch_hint_label, "当前设备不支持网络切换");
-    }
-
-    for (int i = 0; i < static_cast<int>(kUiMenuSettingNetworkOptionCount); ++i) {
-        if (state.network_switch_option_labels[i] == nullptr ||
-            state.network_switch_option_state_labels[i] == nullptr) {
-            continue;
-        }
-
-        lv_label_set_text(state.network_switch_option_labels[i], GetNetworkSwitchOptionName(i));
-        lv_label_set_text(state.network_switch_option_state_labels[i],
-                          i == current_index ? kCheckMarkText : "");
-    }
-}
-
-void UiMenuSetting::SelectNetworkSwitchOption(UiLcdDisplay& display, int index) {
-    if (index < 0 || index >= static_cast<int>(kUiMenuSettingNetworkOptionCount)) {
-        return;
-    }
-
-    auto* dual_network_board = dynamic_cast<DualNetworkBoard*>(&Board::GetInstance());
-    if (dual_network_board == nullptr) {
-        display.ShowNotification("当前设备不支持网络切换", 1500);
-        return;
-    }
-
-    const NetworkType target_type = (index == 0) ? NetworkType::WIFI : NetworkType::ML307;
-    if (dual_network_board->GetNetworkType() == target_type) {
-        RefreshNetworkSwitchScreen(display);
-        return;
-    }
-
-    dual_network_board->SwitchNetworkType(target_type);
-}
-
 void UiMenuSetting::RefreshServerSwitchScreen(UiLcdDisplay& display) {
     auto& state = display.menu_setting_;
     if (state.server_switch_title_label == nullptr) {
@@ -662,7 +488,7 @@ void UiMenuSetting::RefreshServerSwitchScreen(UiLcdDisplay& display) {
     }
 
     DisplayLockGuard lock(&display);
-    lv_label_set_text(state.server_switch_title_label, GetSettingsItemName(1));
+    lv_label_set_text(state.server_switch_title_label, GetSettingsItemName(0));
 
     const int current_index = GetCurrentServerSwitchOptionIndex();
     for (int i = 0; i < static_cast<int>(kUiMenuSettingServerOptionCount); ++i) {
@@ -717,7 +543,7 @@ void UiMenuSetting::RefreshLanguageSwitchScreen(UiLcdDisplay& display) {
     }
 
     DisplayLockGuard lock(&display);
-    lv_label_set_text(state.language_switch_title_label, GetSettingsItemName(2));
+    lv_label_set_text(state.language_switch_title_label, GetSettingsItemName(1));
 
     const int current_index = GetCurrentLanguageSwitchOptionIndex();
     for (int i = 0; i < static_cast<int>(kUiMenuSettingLanguageOptionCount); ++i) {
@@ -772,7 +598,6 @@ void UiMenuSetting::RefreshAboutScreenTexts(UiLcdDisplay& display) {
         GetActivationCodeForDisplay(),
         GetServerAddressForDisplay(),
         GetWifiMacAddressForDisplay(),
-        Get4gImeiForDisplay(),
         GetIpAddressForDisplay(),
         GetUuidForDisplay(),
     };
@@ -811,21 +636,16 @@ void UiMenuSetting::OnSettingsItemClicked(lv_event_t* e) {
     }
 
     if (data->item_id == 0) {
-        ShowNetworkSwitchScreen(*data->display);
-        return;
-    }
-
-    if (data->item_id == 1) {
         ShowServerSwitchScreen(*data->display);
         return;
     }
 
-    if (data->item_id == 2) {
+    if (data->item_id == 1) {
         ShowLanguageSwitchScreen(*data->display);
         return;
     }
 
-    if (data->item_id == 3) {
+    if (data->item_id == 2) {
         ShowAboutScreen(*data->display);
         return;
     }
@@ -833,16 +653,6 @@ void UiMenuSetting::OnSettingsItemClicked(lv_event_t* e) {
     std::string notification = GetSettingsItemName(data->item_id);
     notification += " 开发中";
     data->display->ShowNotification(notification.c_str(), 1200);
-}
-
-void UiMenuSetting::OnNetworkSwitchOptionClicked(lv_event_t* e) {
-    auto* target = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
-    auto* data = static_cast<UiMenuSettingNetworkOptionData*>(lv_obj_get_user_data(target));
-    if (data == nullptr || data->display == nullptr) {
-        return;
-    }
-
-    SelectNetworkSwitchOption(*data->display, data->option_id);
 }
 
 void UiMenuSetting::OnServerSwitchOptionClicked(lv_event_t* e) {

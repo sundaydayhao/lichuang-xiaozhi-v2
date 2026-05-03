@@ -2,7 +2,7 @@
     "target": "esp32s3",
     "builds": [
         {
-            "name": "bread-compact-ml307camtou"
+            "name": "lichuang-s3"
         }
     ]
 }

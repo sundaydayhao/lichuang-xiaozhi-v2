@@ -1,5 +1,5 @@
 #include "lichuang_audio_codec.h"
-#include "boards/bread-compact-ml307camtou/config.h"
+#include "boards/lichuang-s3/config.h"
 
 #include <driver/i2s_std.h>
 #include <esp_err.h>

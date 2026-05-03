@@ -27,7 +27,6 @@ namespace Lang {
         constexpr const char* CONNECTION_SUCCESSFUL = "Connection Successful";
         constexpr const char* CONNECT_TO = "连接 ";
         constexpr const char* CONNECT_TO_HOTSPOT = "连接热点 ";
-        constexpr const char* DETECTING_MODULE = "检测模组...";
         constexpr const char* DOWNLOAD_ASSETS_FAILED = "下载资源失败";
         constexpr const char* ENTERING_WIFI_CONFIG_MODE = "进入配网模式...";
         constexpr const char* ERROR = "错误";
@@ -42,10 +41,7 @@ namespace Lang {
         constexpr const char* MUTED = "已静音";
         constexpr const char* NEW_VERSION = "新版本 ";
         constexpr const char* OTA_UPGRADE = "OTA 升级";
-        constexpr const char* PIN_ERROR = "请插入 SIM 卡";
         constexpr const char* PLEASE_WAIT = "请稍候...";
-        constexpr const char* REGISTERING_NETWORK = "等待网络...";
-        constexpr const char* REG_ERROR = "无法接入网络，请检查流量卡状态";
         constexpr const char* RTC_MODE_OFF = "AEC 关闭";
         constexpr const char* RTC_MODE_ON = "AEC 开启";
         constexpr const char* SCANNING_WIFI = "扫描 Wi-Fi...";
@@ -55,8 +51,6 @@ namespace Lang {
         constexpr const char* SERVER_TIMEOUT = "等待响应超时";
         constexpr const char* SPEAKING = "说话中...";
         constexpr const char* STANDBY = "待命";
-        constexpr const char* SWITCH_TO_4G_NETWORK = "切换到 4G...";
-        constexpr const char* SWITCH_TO_WIFI_NETWORK = "切换到 Wi-Fi...";
         constexpr const char* UPGRADE_FAILED = "升级失败";
         constexpr const char* UPGRADING = "正在升级系统...";
         constexpr const char* VERSION = "版本 ";
@@ -143,20 +137,6 @@ namespace Lang {
         static const std::string_view OGG_ACTIVATION {
         static_cast<const char*>(ogg_activation_start),
         static_cast<size_t>(ogg_activation_end - ogg_activation_start)
-        };
-
-        extern const char ogg_err_pin_start[] asm("_binary_err_pin_ogg_start");
-        extern const char ogg_err_pin_end[] asm("_binary_err_pin_ogg_end");
-        static const std::string_view OGG_ERR_PIN {
-        static_cast<const char*>(ogg_err_pin_start),
-        static_cast<size_t>(ogg_err_pin_end - ogg_err_pin_start)
-        };
-
-        extern const char ogg_err_reg_start[] asm("_binary_err_reg_ogg_start");
-        extern const char ogg_err_reg_end[] asm("_binary_err_reg_ogg_end");
-        static const std::string_view OGG_ERR_REG {
-        static_cast<const char*>(ogg_err_reg_start),
-        static_cast<size_t>(ogg_err_reg_end - ogg_err_reg_start)
         };
 
         extern const char ogg_exclamation_start[] asm("_binary_exclamation_ogg_start");

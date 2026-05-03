@@ -1,17 +1,13 @@
 #ifndef BOARD_H
 #define BOARD_H
 
-#include <http.h>
-#include <web_socket.h>
-#include <mqtt.h>
-#include <udp.h>
 #include <string>
-#include <network_interface.h>
 
 #include "led/led.h"
 #include "backlight.h"
 #include "camera.h"
 #include "assets.h"
+#include "network_interface.h"
 
 
 void* create_board();

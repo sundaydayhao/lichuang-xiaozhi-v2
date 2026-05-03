@@ -2,6 +2,10 @@
 set(SOURCES "audio/audio_codec.cc"
             "audio/audio_service.cc"
             "audio/codecs/lichuang_audio_codec.cc"
+            "network/esp_network.cc"
+            "network/esp_ssl.cc"
+            "network/esp_tcp.cc"
+            "network/http_client.cc"
             "audio/processors/audio_debugger.cc"
             "led/single_led.cc"
             "led/circular_strip.cc"
@@ -34,7 +38,7 @@ set(SOURCES "audio/audio_codec.cc"
             "main.cc"
             )
 
-set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "protocols")
+set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "network" "protocols")
 
 # This project is fixed to one board, so keep only the common drivers it uses.
 set(BOARD_COMMON_SOURCES
@@ -42,10 +46,8 @@ set(BOARD_COMMON_SOURCES
     "boards/common/backlight.cc"
     "boards/common/board.cc"
     "boards/common/button.cc"
-    "boards/common/dual_network_board.cc"
     "boards/common/esp32_camera.cc"
     "boards/common/i2c_device.cc"
-    "boards/common/ml307_board.cc"
     "boards/common/wifi_board.cc"
 )
 list(APPEND SOURCES ${BOARD_COMMON_SOURCES})
@@ -69,7 +71,7 @@ set(BUILTIN_TEXT_FONT font_puhui_14_1)
 set(BUILTIN_ICON_FONT font_awesome_14_1)
 
 # This project is fixed to a single board implementation.
-set(BOARD_TYPE "bread-compact-ml307camtou")
+set(BOARD_TYPE "lichuang-s3")
 set(BUILTIN_TEXT_FONT font_puhui_16_4)
 set(BUILTIN_ICON_FONT font_awesome_16_4)
 set(DEFAULT_EMOJI_COLLECTION twemoji_64)

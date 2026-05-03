@@ -277,9 +277,7 @@ MCP 工具通过 `espressif/esp_xiaozhi` 的 MCP engine 注册，让 AI 能够�
 ## 开发板类继承关系
 
 - `Board` - 基础板级类
-  - `WifiBoard` - Wi-Fi连接的开发板
-  - `Ml307Board` - 使用4G模块的开发板
-  - `DualNetworkBoard` - 支持Wi-Fi与4G网络切换的开发板
+  - `WifiBoard` - Wi-Fi 连接的开发板
 
 ## 开发技巧
 

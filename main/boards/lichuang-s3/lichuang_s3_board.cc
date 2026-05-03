@@ -1,4 +1,4 @@
-#include "dual_network_board.h"
+#include "wifi_board.h"
 #include "codecs/lichuang_audio_codec.h"
 #include "display/ui_display.h"
 #include "application.h"
@@ -7,7 +7,6 @@
 #include "config.h"
 #include "led/single_led.h"
 #include "esp32_camera.h"
-#include "settings.h"
 
 #include <esp_lcd_touch_ft5x06.h>
 
@@ -18,9 +17,6 @@
 #include <esp_lcd_panel_ops.h>
 #include <esp_partition.h>
 #include <esp_lcd_panel_vendor.h>
-#include <nvs.h>
-#include <nvs_flash.h>
-#include <wifi_configuration_ap.h>
 #include <wifi_station.h>
 #include <mutex>
 
@@ -32,9 +28,9 @@
 #ifdef TAG
 #undef TAG
 #endif
-#define TAG "CompactMl307ctBoard"
+#define TAG "LichuangS3Board"
 
-class CompactMl307ctBoard : public DualNetworkBoard {
+class LichuangS3Board : public WifiBoard {
 private:
     static constexpr uint8_t kPca9557Address = 0x19;
     static constexpr uint8_t kPca9557OutputPort = 0x01;
@@ -57,13 +53,6 @@ private:
     std::mutex camera_mutex_;
     std::string pending_camera_explain_url_;
     std::string pending_camera_explain_token_;
-
-    void SetML307Enable(bool enable) {
-        if (ML307_EN_PIN != GPIO_NUM_NC) {
-            gpio_set_level(ML307_EN_PIN, enable ? 1 : 0);
-            ESP_LOGI(TAG, "ML307 EN pin set to %s", enable ? "HIGH" : "LOW");
-        }
-    }
 
     void InitializeI2c() {
         i2c_master_bus_config_t i2c_bus_cfg = {
@@ -288,26 +277,10 @@ private:
     void InitializeButtons() {
         boot_button_.OnClick([this]() {
             auto& app = Application::GetInstance();
-            if (GetNetworkType() == NetworkType::WIFI) {
-                if (app.GetDeviceState() == kDeviceStateStarting && !WifiStation::GetInstance().IsConnected()) {
-                    auto& wifi_board = static_cast<WifiBoard&>(GetCurrentBoard());
-                    wifi_board.ResetWifiConfiguration();
-                }
+            if (app.GetDeviceState() == kDeviceStateStarting && !WifiStation::GetInstance().IsConnected()) {
+                ResetWifiConfiguration();
             }
             app.ToggleChatState();
-        });
-
-        boot_button_.OnDoubleClick([this]() {
-            auto& app = Application::GetInstance();
-            if (app.GetDeviceState() == kDeviceStateStarting || app.GetDeviceState() == kDeviceStateWifiConfiguring) {
-                if (GetNetworkType() == NetworkType::WIFI) {
-                    SetML307Enable(true);
-                    ESP_LOGI(TAG, "Switching to 4G, enabling ML307");
-                } else {
-                    ESP_LOGI(TAG, "Switching to WiFi, ML307 will be disabled when WiFi connects");
-                }
-                SwitchNetworkType();
-            }
         });
     }
 
@@ -360,81 +333,9 @@ private:
         }
     }
 
-    bool TryWifiConnection() {
-        auto& wifi_station = WifiStation::GetInstance();
-        wifi_station.OnScanBegin([this]() {
-            GetDisplay()->ShowNotification(Lang::Strings::SCANNING_WIFI, 30000);
-        });
-        wifi_station.OnConnect([this](const std::string& ssid) {
-            std::string notification = Lang::Strings::CONNECT_TO;
-            notification += ssid;
-            notification += "...";
-            GetDisplay()->ShowNotification(notification.c_str(), 30000);
-        });
-        wifi_station.OnConnected([this](const std::string& ssid) {
-            std::string notification = Lang::Strings::CONNECTED_TO;
-            notification += ssid;
-            GetDisplay()->ShowNotification(notification.c_str(), 30000);
-        });
-        wifi_station.Start();
-        return wifi_station.WaitForConnected(30 * 1000);
-    }
-
-    void TryWifiConfigAndSwitchTo4G() {
-        auto display = GetDisplay();
-        display->ShowNotification("WiFi连接失败，进入配网模式");
-        vTaskDelay(pdMS_TO_TICKS(2000));
-
-        auto& application = Application::GetInstance();
-        application.SetDeviceState(kDeviceStateWifiConfiguring);
-
-        auto& wifi_ap = WifiConfigurationAp::GetInstance();
-        Settings ui_settings("ui", false);
-        std::string language = ui_settings.GetString("language");
-        if (language != "zh-CN" && language != "zh-TW" && language != "en-US") {
-            language = Lang::CODE;
-        }
-        wifi_ap.SetLanguage(language.c_str());
-        wifi_ap.SetSsidPrefix("Xiaozhi");
-        wifi_ap.Start();
-
-        vTaskDelay(pdMS_TO_TICKS(1500));
-
-        std::string hint = Lang::Strings::CONNECT_TO_HOTSPOT;
-        hint += wifi_ap.GetSsid();
-        hint += Lang::Strings::ACCESS_VIA_BROWSER;
-        hint += wifi_ap.GetWebServerUrl();
-        hint += "\n\n";
-
-        application.Alert(Lang::Strings::WIFI_CONFIG_MODE, hint.c_str(), "gear", Lang::Sounds::OGG_WIFICONFIG);
-
-        ESP_LOGI(TAG, "Waiting 30 seconds for WiFi configuration...");
-        vTaskDelay(pdMS_TO_TICKS(30 * 1000));
-
-        if (!WifiStation::GetInstance().IsConnected()) {
-            ESP_LOGI(TAG, "WiFi configuration timeout, switching to 4G");
-            wifi_ap.Stop();
-            display->ShowNotification("配网超时，切换到4G网络");
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            SwitchNetworkType();
-        }
-    }
-
 public:
-    CompactMl307ctBoard() : DualNetworkBoard(ML307_TX_PIN, ML307_RX_PIN, GPIO_NUM_NC, 0),
-                            boot_button_(BOOT_BUTTON_GPIO) {
-        if (ML307_EN_PIN != GPIO_NUM_NC) {
-            gpio_config_t ml307_en_config = {
-                .pin_bit_mask = 1ULL << ML307_EN_PIN,
-                .mode = GPIO_MODE_OUTPUT,
-                .pull_up_en = GPIO_PULLUP_DISABLE,
-                .pull_down_en = GPIO_PULLDOWN_DISABLE,
-                .intr_type = GPIO_INTR_DISABLE,
-            };
-            ESP_ERROR_CHECK(gpio_config(&ml307_en_config));
-            SetML307Enable(true);
-        }
-
+    LichuangS3Board() : WifiBoard(),
+                        boot_button_(BOOT_BUTTON_GPIO) {
         InitializeI2c();
         InitializePca9557();
         InitializeSpi();
@@ -452,55 +353,18 @@ public:
         MountStorage();
         GetBacklight()->RestoreBrightness();
 
-        ESP_LOGI(TAG, "CompactMl307ctBoard initialized, network type: %d", (int)GetNetworkType());
-
-        nvs_handle_t nvs;
-        esp_err_t err = nvs_open("network", NVS_READWRITE, &nvs);
-        if (err == ESP_OK) {
-            nvs_erase_key(nvs, "type");
-            nvs_commit(nvs);
-            nvs_close(nvs);
-            ESP_LOGI(TAG, "Cleared network settings");
-        }
+        ESP_LOGI(TAG, "LichuangS3Board initialized");
     }
 
-    ~CompactMl307ctBoard() override {
+    ~LichuangS3Board() override {
         delete camera_;
         delete s620_;
         delete display_;
     }
 
     void StartNetwork() override {
-        ESP_LOGI(TAG, "StartNetwork called, current network type: %d", (int)GetNetworkType());
-
-        if (GetNetworkType() == NetworkType::WIFI) {
-            auto& current_board = GetCurrentBoard();
-            auto* wifi_board = dynamic_cast<WifiBoard*>(&current_board);
-            if (wifi_board != nullptr && wifi_board->ShouldEnterWifiConfigMode()) {
-                ESP_LOGI(TAG, "force_ap flag detected, entering WiFi config mode");
-                current_board.StartNetwork();
-                return;
-            }
-
-            auto display = GetDisplay();
-            display->SetStatus(Lang::Strings::CONNECTING);
-            ESP_LOGI(TAG, "Starting WiFi connection attempt");
-
-            if (!TryWifiConnection()) {
-                ESP_LOGI(TAG, "WiFi connection failed, trying configuration mode");
-                WifiStation::GetInstance().Stop();
-                TryWifiConfigAndSwitchTo4G();
-                return;
-            }
-
-            ESP_LOGI(TAG, "WiFi connection successful");
-            SetML307Enable(false);
-            return;
-        }
-
-        ESP_LOGI(TAG, "Network type is not WiFi, using 4G");
-        SetML307Enable(true);
-        DualNetworkBoard::StartNetwork();
+        GetDisplay()->SetStatus(Lang::Strings::CONNECTING);
+        WifiBoard::StartNetwork();
     }
 
     Led* GetLed() override {
@@ -561,4 +425,4 @@ public:
     }
 };
 
-DECLARE_BOARD(CompactMl307ctBoard);
+DECLARE_BOARD(LichuangS3Board);

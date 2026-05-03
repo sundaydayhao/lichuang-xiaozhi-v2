@@ -24,7 +24,7 @@
 
 ### 已实现功能
 
-- Wi-Fi / ML307 Cat.1 4G
+- Wi-Fi
 - 离线语音唤醒 [ESP-SR](https://github.com/espressif/esp-sr)
 - 支持两种通信协议（[Websocket](docs/websocket.md) 或 MQTT+UDP）
 - 采用 OPUS 音频编解码
