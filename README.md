@@ -1,161 +1,326 @@
-# An MCP-based Chatbot | 一个基于 MCP 的聊天机器人
+# 立创小智 v2
 
-（中文 | [English](README_en.md) | [日本語](README_ja.md)）
+这是一个面向立创 `ESP32-S3` 硬件的语音 AI 固件项目，基于 `ESP-IDF` 和 `esp_xiaozhi` 组件实现语音对话、触摸界面、摄像头能力、MCP 工具调用，以及一组围绕屏幕和相机展开的本地交互场景。
 
-## 视频
+这份 README 只描述当前仓库的真实状态，不再沿用上游多板通用版说明。当前代码在构建系统中固定使用 `main/boards/lichuang-s3`，默认目标芯片为 `esp32s3`。
 
-👉 [人类：给 AI 装摄像头 vs AI：当场发现主人三天没洗头【bilibili】](https://www.bilibili.com/video/BV1bpjgzKEhd/)
+## 项目定位
 
-👉 [手工打造你的 AI 女友，新手入门教程【bilibili】](https://www.bilibili.com/video/BV1XnmFYLEJN/)
+- 固定板型：`lichuang-s3`
+- 固定目标：`ESP32-S3`
+- 默认配置：`16MB Flash + PSRAM`
+- 默认分区表：`partitions/v2/16m.csv`
+- 默认协议栈：由 `esp_xiaozhi` 组件负责聊天连接，按服务端配置使用 WebSocket 或 MQTT
 
-## 介绍
+如果你要做的是自定义板卡移植，而不是直接编译这块板子的固件，请先看 [main/boards/README.md](main/boards/README.md)。
 
-这是一个由虾哥开源的 ESP32 项目，以 MIT 许可证发布，允许任何人免费使用，或用于商业用途。
+## 硬件基线
 
-我们希望通过这个项目，能够帮助大家了解 AI 硬件开发，将当下飞速发展的大语言模型应用到实际的硬件设备中。
+从当前板级代码可以确认，这个分支围绕以下硬件资源开发：
 
-如果你有任何想法或建议，请随时提出 Issues 或加入 QQ 群：1011329060
+- `ESP32-S3`
+- `320 x 240` ST7789 SPI LCD
+- FT5X06 触摸控制器
+- ES8311 扬声器输出 codec
+- ES7210 麦克风输入 codec
+- 板载摄像头
+- 板载 LED
+- BOOT 按键
+- `assets` 与 `storage` 两个 SPIFFS 分区
 
-### 基于 MCP 控制万物
+其中：
 
-小智 AI 聊天机器人作为一个语音交互入口，利用 Qwen / DeepSeek 等大模型的 AI 能力，通过 MCP 协议实现多端控制。
+- `assets` 分区用于字体、表情、音效、语言文件、唤醒词模型等资源
+- `storage` 分区用于运行时存储，例如拍照后的本地图片文件
 
-![通过MCP控制万物](docs/mcp-based-graph.jpg)
+## 已实现功能
 
-### 已实现功能
+### 语音与系统能力
 
-- Wi-Fi
-- 离线语音唤醒 [ESP-SR](https://github.com/espressif/esp-sr)
-- 支持两种通信协议（[Websocket](docs/websocket.md) 或 MQTT+UDP）
-- 采用 OPUS 音频编解码
-- 基于流式 ASR + LLM + TTS 架构的语音交互
-- 声纹识别，识别当前说话人的身份 [3D Speaker](https://github.com/modelscope/3D-Speaker)
-- OLED / LCD 显示屏，支持表情显示
-- 电量显示与电源管理
-- 支持多语言（中文、英文、日文）
-- 支持 ESP32-C3、ESP32-S3、ESP32-P4 芯片平台
-- 通过设备端 MCP 实现设备控制（音量、灯光、电机、GPIO 等）
-- 通过云端 MCP 扩展大模型能力（智能家居控制、PC桌面操作、知识搜索、邮件收发等）
+- Wi-Fi 联网与配网 AP
+- 离线唤醒词检测，默认启用 AFE 唤醒
+- 可选自定义唤醒词
+- Opus 音频编码
+- 流式 ASR / LLM / TTS 语音对话
+- 设备启动后自动进行 OTA 检查、激活检查和资源包检查
+- `assets` 在线热更新
+- 屏幕状态栏、触摸菜单、亮度控制、主题切换
+- 本地相册与 `/storage` 持久化存储
+- BLE HID 能力，供手机遥控场景使用
 
-## 硬件
+### MCP 工具能力
 
-### 面包板手工制作实践
+设备侧 MCP 已注册的能力包括：
 
-详见飞书文档教程：
+- 获取设备状态
+- 调节音量
+- 调节屏幕亮度
+- 切换屏幕主题
+- 拍照并请求图像解释
+- 远程自拍杆动作控制
+- AI 闹钟设置、取消、状态查询
 
-👉 [《小智 AI 聊天机器人百科全书》](https://ccnphfhqs21z.feishu.cn/wiki/F5krwD16viZoF0kKkvDcrZNYnhb?from=from_copylink)
+### 屏幕内置场景
 
-面包板效果图如下：
+主界面菜单中已经实现或接入了以下场景：
 
-![面包板效果图](docs/v1/wiring2.jpg)
+- AI 闹钟
+- 百科问答
+- 翻译官
+- 拍识万物
+- AI 自拍杆
+- AI 打印
+- 单词听写
+- 看相
+- 魔镜美妆
+- 助眠音乐
+- 设置
 
-### 支持 70 多个开源硬件（仅展示部分）
+需要注意：
 
-- <a href="https://oshwhub.com/li-chuang-kai-fa-ban/li-chuang-shi-zhan-pai-esp32-s3-kai-fa-ban" target="_blank" title="立创·实战派 ESP32-S3 开发板">立创·实战派 ESP32-S3 开发板</a>
-- <a href="https://github.com/espressif/esp-box" target="_blank" title="乐鑫 ESP32-S3-BOX3">乐鑫 ESP32-S3-BOX3</a>
-- <a href="https://docs.m5stack.com/zh_CN/core/CoreS3" target="_blank" title="M5Stack CoreS3">M5Stack CoreS3</a>
-- <a href="https://docs.m5stack.com/en/atom/Atomic%20Echo%20Base" target="_blank" title="AtomS3R + Echo Base">M5Stack AtomS3R + Echo Base</a>
-- <a href="https://gf.bilibili.com/item/detail/1108782064" target="_blank" title="神奇按钮 2.4">神奇按钮 2.4</a>
-- <a href="https://www.waveshare.net/shop/ESP32-S3-Touch-AMOLED-1.8.htm" target="_blank" title="微雪电子 ESP32-S3-Touch-AMOLED-1.8">微雪电子 ESP32-S3-Touch-AMOLED-1.8</a>
-- <a href="https://github.com/Xinyuan-LilyGO/T-Circle-S3" target="_blank" title="LILYGO T-Circle-S3">LILYGO T-Circle-S3</a>
-- <a href="https://oshwhub.com/tenclass01/xmini_c3" target="_blank" title="虾哥 Mini C3">虾哥 Mini C3</a>
-- <a href="https://oshwhub.com/movecall/cuican-ai-pendant-lights-up-y" target="_blank" title="Movecall CuiCan ESP32S3">璀璨·AI 吊坠</a>
-- <a href="https://github.com/WMnologo/xingzhi-ai" target="_blank" title="无名科技Nologo-星智-1.54">无名科技 Nologo-星智-1.54TFT</a>
-- <a href="https://www.seeedstudio.com/SenseCAP-Watcher-W1-A-p-5979.html" target="_blank" title="SenseCAP Watcher">SenseCAP Watcher</a>
-- <a href="https://www.bilibili.com/video/BV1BHJtz6E2S/" target="_blank" title="ESP-HI 超低成本机器狗">ESP-HI 超低成本机器狗</a>
+- `拍识万物`、`看相`、`魔镜美妆` 这类视觉能力依赖摄像头和服务端模型能力
+- `AI 打印` 当前代码中调用的是在线生图接口，使用时必须联网
+- `AI 自拍杆` 依赖 BLE HID，需要先和手机配对
 
-<div style="display: flex; justify-content: space-between;">
-  <a href="docs/v1/lichuang-s3.jpg" target="_blank" title="立创·实战派 ESP32-S3 开发板">
-    <img src="docs/v1/lichuang-s3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/espbox3.jpg" target="_blank" title="乐鑫 ESP32-S3-BOX3">
-    <img src="docs/v1/espbox3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/m5cores3.jpg" target="_blank" title="M5Stack CoreS3">
-    <img src="docs/v1/m5cores3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/atoms3r.jpg" target="_blank" title="AtomS3R + Echo Base">
-    <img src="docs/v1/atoms3r.jpg" width="240" />
-  </a>
-  <a href="docs/v1/magiclick.jpg" target="_blank" title="神奇按钮 2.4">
-    <img src="docs/v1/magiclick.jpg" width="240" />
-  </a>
-  <a href="docs/v1/waveshare.jpg" target="_blank" title="微雪电子 ESP32-S3-Touch-AMOLED-1.8">
-    <img src="docs/v1/waveshare.jpg" width="240" />
-  </a>
-  <a href="docs/v1/lilygo-t-circle-s3.jpg" target="_blank" title="LILYGO T-Circle-S3">
-    <img src="docs/v1/lilygo-t-circle-s3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/xmini-c3.jpg" target="_blank" title="虾哥 Mini C3">
-    <img src="docs/v1/xmini-c3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/movecall-cuican-esp32s3.jpg" target="_blank" title="CuiCan">
-    <img src="docs/v1/movecall-cuican-esp32s3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/wmnologo_xingzhi_1.54.jpg" target="_blank" title="无名科技Nologo-星智-1.54">
-    <img src="docs/v1/wmnologo_xingzhi_1.54.jpg" width="240" />
-  </a>
-  <a href="docs/v1/sensecap_watcher.jpg" target="_blank" title="SenseCAP Watcher">
-    <img src="docs/v1/sensecap_watcher.jpg" width="240" />
-  </a>
-  <a href="docs/v1/esp-hi.jpg" target="_blank" title="ESP-HI 超低成本机器狗">
-    <img src="docs/v1/esp-hi.jpg" width="240" />
-  </a>
-</div>
+## 目录说明
 
-## 软件
+- `main/`：主应用代码
+- `main/boards/lichuang-s3/`：当前固定板型的板级实现
+- `main/display/`：LCD、LVGL UI、各个功能菜单
+- `main/audio/`：音频采集、处理、唤醒、编解码
+- `main/protocols/`：与 `esp_xiaozhi` 的协议对接
+- `components/ble_hid/`：BLE HID 实现，供 AI 自拍杆功能使用
+- `partitions/v2/`：分区表
+- `scripts/`：打包、资源生成、音频调试等脚本
 
-### 固件烧录
+## 开发环境
 
-新手第一次操作建议先不要搭建开发环境，直接使用免开发环境烧录的固件。
+建议环境：
 
-固件默认接入 [xiaozhi.me](https://xiaozhi.me) 官方服务器，个人用户注册账号可以免费使用 Qwen 实时模型。
+- `ESP-IDF 5.5.0` 或更高版本
+- Python 3
+- CMake / Ninja
+- 一根可烧录的 USB 数据线
+- Linux 开发环境优先，构建和驱动体验通常更稳定
 
-👉 [新手烧录固件教程](https://ccnphfhqs21z.feishu.cn/wiki/Zpz4wXBtdimBrLk25WdcXzxcnNS)
+版本要求不要写低。当前 `main/idf_component.yml` 已经声明 `idf >= 5.5.0`，不建议再按老版本 README 用 `5.4` 去尝试。
 
-### 开发环境
+## 编译前说明
 
-- Cursor 或 VSCode
-- 安装 ESP-IDF 插件，选择 SDK 版本 5.4 或以上
-- Linux 比 Windows 更好，编译速度快，也免去驱动问题的困扰
-- 本项目使用 Google C++ 代码风格，提交代码时请确保符合规范
+这个项目第一次编译时会通过 IDF Component Manager 拉取依赖，并根据 `sdkconfig` 自动生成默认 `assets.bin`。因此：
 
-### 开发者文档
+- 首次构建时间会比普通 IDF 项目长
+- 默认会一起准备 `assets` 分区内容
+- 如果你不想烧录默认资源，可以在 `menuconfig` 里关闭
 
-- [自定义开发板指南](main/boards/README.md) - 学习如何为小智 AI 创建自定义开发板
-- [MCP 协议物联网控制用法说明](docs/mcp-usage.md) - 了解如何通过 MCP 协议控制物联网设备
-- [MCP 协议交互流程](docs/mcp-protocol.md) - 设备端 MCP 协议的实现方式
-- [MQTT + UDP 混合通信协议文档](docs/mqtt-udp.md)
-- [一份详细的 WebSocket 通信协议文档](docs/websocket.md)
+默认 `sdkconfig.defaults` 使用：
 
-## 大模型配置
+- `16MB Flash`
+- `QIO`
+- `Octal PSRAM`
+- `partitions/v2/16m.csv`
 
-如果你已经拥有一个小智 AI 聊天机器人设备，并且已接入官方服务器，可以登录 [xiaozhi.me](https://xiaozhi.me) 控制台进行配置。
+如果你的硬件不是这个规格，需要你自己修改分区和相关配置，否则不要盲目烧录。
 
-👉 [后台操作视频教程（旧版界面）](https://www.bilibili.com/video/BV1jUCUY2EKM/)
+## 编译步骤
 
-## 相关开源项目
+先进入已经导出好 `ESP-IDF` 环境的 shell，再执行：
 
-在个人电脑上部署服务器，可以参考以下第三方开源的项目：
+```bash
+cd lichuang-xiaozhi-v2
+idf.py set-target esp32s3
+idf.py build
+```
 
-- [xinnan-tech/xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) Python 服务器
-- [joey-zhou/xiaozhi-esp32-server-java](https://github.com/joey-zhou/xiaozhi-esp32-server-java) Java 服务器
-- [AnimeAIChat/xiaozhi-server-go](https://github.com/AnimeAIChat/xiaozhi-server-go) Golang 服务器
+如果你还没有导出 IDF 环境，先执行你本机对应的 `export` 脚本，例如：
 
-使用小智通信协议的第三方客户端项目：
+```bash
+. $IDF_PATH/export.sh
+```
 
-- [huangjunsen0406/py-xiaozhi](https://github.com/huangjunsen0406/py-xiaozhi) Python 客户端
-- [TOM88812/xiaozhi-android-client](https://github.com/TOM88812/xiaozhi-android-client) Android 客户端
-- [100askTeam/xiaozhi-linux](http://github.com/100askTeam/xiaozhi-linux) 百问科技提供的 Linux 客户端
-- [78/xiaozhi-sf32](https://github.com/78/xiaozhi-sf32) 思澈科技的蓝牙芯片固件
-- [QuecPython/solution-xiaozhiAI](https://github.com/QuecPython/solution-xiaozhiAI) 移远提供的 QuecPython 固件
+### 可选：先进入 menuconfig
 
-## Star History
+建议第一次编译前先看一遍：
 
-<a href="https://star-history.com/#78/xiaozhi-esp32&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date" />
- </picture>
-</a>
+```bash
+idf.py menuconfig
+```
+
+重点配置项都在 `Xiaozhi Assistant` 菜单下，包括：
+
+- `Default OTA URL`
+- `Flash Assets`
+- `Custom Assets File`
+- `Default Language`
+- `Enable Wake Word Detection (AFE)`
+- `Enable Custom Wake Word Detection`
+- `Enable Audio Noise Reduction`
+- `Enable Server-Side AEC`
+- `Enable Acoustic WiFi Provisioning`
+- `Enable Audio Debugger`
+- `Enable Custom Message Reception`
+
+其中最常用的几个点：
+
+- 想接自建服务，先改 `Default OTA URL`
+- 想换语言，改 `Default Language`
+- 想关闭默认资源烧录，改 `Flash Assets`
+- 想做自定义唤醒词，先关闭 AFE，再启用 `Custom Wake Word`
+
+## 烧录与串口监视
+
+```bash
+idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+退出串口监视：
+
+```text
+Ctrl + ]
+```
+
+如果你怀疑 NVS 里残留了旧配置，建议直接整片擦除后重烧：
+
+```bash
+idf.py -p /dev/ttyUSB0 erase-flash flash monitor
+```
+
+## 首次启动与使用方法
+
+### 1. 首次上电
+
+设备启动后会依次完成：
+
+1. 初始化屏幕、音频、摄像头相关外设
+2. 连接 Wi-Fi
+3. 检查资源包更新
+4. 检查固件更新
+5. 按服务器要求执行激活流程
+6. 启动聊天协议，进入待机
+
+### 2. Wi-Fi 配网
+
+如果设备里还没有保存 Wi-Fi，程序会自动进入配网模式，启动一个热点，热点名前缀是：
+
+```text
+Xiaozhi
+```
+
+屏幕会显示热点名和配网页地址。此时：
+
+1. 手机或电脑连接这个热点
+2. 用浏览器打开屏幕上显示的地址
+3. 提交目标 Wi-Fi 的账号和密码
+4. 设备重启或重新连网后进入正常模式
+
+如果你在 `menuconfig` 中启用了 `Enable Acoustic WiFi Provisioning`，还可以使用声波配网。
+
+### 3. 激活与在线配置
+
+当前固件会通过 OTA 地址获取：
+
+- 固件更新信息
+- 激活码 / 激活挑战
+- 聊天服务配置
+- 服务器时间
+
+默认 OTA 地址来自：
+
+```text
+https://api.tenclass.net/xiaozhi/ota/
+```
+
+如果你接的是自建服务，最稳妥的方式是在编译前就改掉这个配置。
+
+### 4. 语音交互
+
+正常待机后有两种常用入口：
+
+- 说唤醒词
+- 单击 BOOT 按键
+
+当前应用逻辑里，单击 BOOT 的行为大致如下：
+
+- 待机时：开始一次会话
+- 播报中：打断当前说话
+- 监听中：关闭当前音频会话
+- 配网界面：切换到音频测试，再次单击回到配网界面
+
+### 5. 触摸界面
+
+主界面是触摸菜单，点击图标即可进入对应场景。
+
+几个和使用相关的细节：
+
+- `拍识万物`：进入后会打开摄像头预览，点击 AI 按钮发起识别；在该页面向左滑动可进入相册
+- `AI 自拍杆`：进入后设备会启动 BLE HID，手机侧需要配对名为 `Xiaozhi-HID` 的蓝牙设备
+- `AI 打印`：进入后直接说出你想画的内容，设备会把语音识别文本提交给在线生图接口
+- `设置`：可切换语言、查看固件版本、MAC、IP、UUID 等信息；如果你预先写入了备选 OTA 地址，也可在这里切换服务器
+
+## 资源与分区
+
+当前默认分区表是 [partitions/v2/16m.csv](partitions/v2/16m.csv)，主要分区如下：
+
+- `ota_0`：应用分区 A
+- `ota_1`：应用分区 B
+- `assets`：4MB，存放字体、表情、声音、模型等资源
+- `storage`：4MB，存放运行期数据，如拍照文件
+
+如果你想了解 `v2` 分区为什么这么设计，可以看 [partitions/v2/README.md](partitions/v2/README.md)。
+
+## 发行打包
+
+如果你要导出合并固件和发布压缩包，可以用仓库里的脚本：
+
+```bash
+python scripts/release.py lichuang-s3
+```
+
+或者对当前已经编译好的配置直接打包：
+
+```bash
+python scripts/release.py
+```
+
+输出目录：
+
+```text
+releases/
+```
+
+脚本会调用：
+
+- `idf.py build`
+- `idf.py merge-bin`
+
+并生成：
+
+- `v<version>_lichuang-s3.bin`
+- `v<version>_lichuang-s3_merged.bin`
+- 对应 zip 包
+
+## 常用调试入口
+
+- 音频调试 UDP：`Enable Audio Debugger`
+- 资源打包脚本：[scripts/build_default_assets.py](scripts/build_default_assets.py)
+- 自定义 SPIFFS 资源说明：[scripts/spiffs_assets/README.md](scripts/spiffs_assets/README.md)
+- BLE HID 组件说明：[components/ble_hid/README.md](components/ble_hid/README.md)
+
+## 相关文档
+
+- [main/boards/README.md](main/boards/README.md) - 自定义开发板指南
+- [docs/mcp-usage.md](docs/mcp-usage.md) - MCP 用法说明
+- [docs/mcp-protocol.md](docs/mcp-protocol.md) - MCP 交互流程
+- [docs/websocket.md](docs/websocket.md) - WebSocket 协议说明
+- [docs/mqtt-udp.md](docs/mqtt-udp.md) - MQTT + UDP 说明
+
+## 注意事项
+
+- 这个仓库当前不是“支持几十块板”的通用固件，而是固定面向 `lichuang-s3`
+- 构建要求以仓库里的 `idf_component.yml` 和 `sdkconfig.defaults` 为准，不要再按旧 README 的版本要求执行
+- `AI 打印`、视觉解释、云端对话等能力都依赖网络和服务端接口，不是纯离线功能
+- 若硬件参数和本仓库默认配置不一致，先改板级配置和分区，再谈烧录
+
+## License
+
+本仓库使用 [LICENSE](LICENSE) 中的许可证。
